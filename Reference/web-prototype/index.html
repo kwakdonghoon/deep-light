@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#02050b">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<title>Abyss Keeper</title>
+<style>
+  /* Galmuri (OFL 1.1, (c) Lee Minseo) - 한글 픽셀 폰트. 라이선스: assets/fonts/Galmuri-OFL-LICENSE.txt */
+  @font-face{font-family:"Galmuri14";src:url(assets/fonts/Galmuri14.woff2) format("woff2");font-display:swap}
+  @font-face{font-family:"Galmuri11";src:url(assets/fonts/Galmuri11.woff2) format("woff2");font-display:swap}
+  :root{
+    /* 픽셀 폰트는 원래 크기의 정수배로만 그려야 또렷하다: 폰 높이는 1배, 큰 화면은 2~3배 */
+    --f:1;
+    /* --px: 월드 캔버스의 픽셀 한 칸과 같은 화면 크기(높이/180). 모든 프레임·아이콘을 이 단위의 정수배로 그려 월드와 격자를 맞춘다 */
+    --px:max(2px,calc(100vh / 180));
+    --sl:max(env(safe-area-inset-left),1.5vh); --sr:max(env(safe-area-inset-right),1.5vh);
+    --st:max(env(safe-area-inset-top),1.5vh);  --sb:max(env(safe-area-inset-bottom),1.5vh);
+    --fs:calc(14px*var(--f)); --fs-s:calc(11px*var(--f)); --ink:#e8f6ff; --dim:#a9c0d2; --cy:#7fe3ff;
+    --sm:max(56px,15vh); --R:max(23vh,80px); --bigw:26vh;
+    /* 픽셀 폰트가 없으므로 블러 대신 1픽셀 단위 하드 외곽 그림자 */
+    --tsh:var(--px) 0 0 #050a14,calc(var(--px)*-1) 0 0 #050a14,0 var(--px) 0 #050a14,0 calc(var(--px)*-1) 0 #050a14;
+  }
+  @media (min-height:560px){:root{--f:2}}
+  @media (min-height:900px){:root{--f:3}}
+  html,body{margin:0;height:100%;background:#02050b;overflow:hidden;color:var(--ink);
+    font-family:"Galmuri14","Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR",sans-serif;font-weight:normal;
+    user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;
+    touch-action:none;overscroll-behavior:none}
+  #stage{position:fixed;inset:0}
+  canvas#game{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);image-rendering:pixelated;image-rendering:crisp-edges;cursor:crosshair}
+  b{font-weight:normal}
+  /* 보조 글자는 Galmuri11(11px 배수), 주요 글자는 Galmuri14(14px 배수) */
+  .bar>.t,#zone,.badge,#craft,.card .e,.card .c,.ph .meta,.hrow .hd,#start td,#bossbar>div:first-child{font-family:"Galmuri11","Malgun Gothic",sans-serif}
+  img{image-rendering:pixelated;display:block;pointer-events:none}
+  .i16{width:calc(var(--px)*16)} .i12{width:calc(var(--px)*12)}
+
+  /* ---- 9-슬라이스 픽셀 프레임 (art/frames.px.js, 모서리 4px) ---- */
+  .fr{border:calc(var(--px)*4) solid transparent;border-image:var(--frame, url(assets/panel.png)) 4 fill / calc(var(--px)*4) stretch;image-rendering:pixelated;box-sizing:border-box}
+
+  /* ---- HUD ---- */
+  .hud{position:absolute;pointer-events:none;text-shadow:var(--tsh);font-size:var(--fs);z-index:2}
+  #hudTL{left:var(--sl);top:var(--st);width:32vh}
+  .bar{position:relative;height:max(20px,5.4vh);background:#050a14;border:var(--px) solid #0a1626;box-shadow:0 0 0 var(--px) #2e4668;margin-bottom:calc(var(--px)*3);box-sizing:border-box}
+  .bar>.f{height:100%;box-shadow:inset 0 var(--px) 0 rgba(255,255,255,.35),inset 0 calc(var(--px)*-1) 0 rgba(0,0,0,.35)}
+  .bar>.t{position:absolute;left:1vh;top:0;line-height:max(18px,5.2vh);font-size:var(--fs-s);white-space:nowrap}
+  #hpfill{background:#e0525a;width:100%} #o2fill{background:#3aa7e8;width:100%}
+  .bar.low{animation:blink .5s steps(2) infinite}
+  .bar.low>.t::after{content:" !";color:#ffe08a}
+  @keyframes blink{50%{box-shadow:0 0 0 var(--px) #ff6b6b}}
+  #zone{font-size:var(--fs-s);color:var(--dim)}
+  #chips{left:50%;top:var(--st);transform:translateX(-50%)}
+  #inv{display:flex;gap:calc(var(--px)*4);padding:calc(var(--px)*1) calc(var(--px)*3);--frame:url(assets/chip.png)}
+  .chip{display:flex;align-items:center;gap:calc(var(--px)*2);min-width:calc(var(--px)*26)}
+  .chip b{color:#ffe08a;font-size:var(--fs);min-width:2ch}
+  #bossbar{left:50%;top:calc(var(--st) + 8.5vh);transform:translateX(-50%);width:46vh;display:none;text-align:center}
+  #bossfill{background:#c0392b;width:100%}
+  #toast{left:50%;top:calc(var(--st) + 14vh);transform:translateX(-50%);padding:calc(var(--px)*1) calc(var(--px)*3);opacity:0;transition:opacity .25s;white-space:nowrap;max-width:84vw;overflow:hidden;text-overflow:ellipsis;font-size:var(--fs);--frame:url(assets/panel.png)}
+  #hudTR{position:absolute;right:var(--sr);top:var(--st);display:flex;gap:calc(var(--px)*3);align-items:flex-start;z-index:3}
+  #mini{width:18vh;height:18vh;image-rendering:pixelated;display:block;background:#05080f;border:calc(var(--px)*3) solid transparent;border-image:url(assets/panel.png) 4 / calc(var(--px)*3) stretch;box-sizing:border-box}
+  #hudTR.big #mini{width:50vh;height:50vh}
+  #craft{left:var(--sl);bottom:var(--sb);padding:.6vh 1.2vh;line-height:1.5;font-size:var(--fs-s)}
+  #craft .ch{color:#9fe8ff} #craft small{color:var(--dim);font-weight:normal}
+  .ok{color:#8fe6a0} .no{color:#ff9a9a}
+  #craft .can{color:#fff;background:rgba(80,200,120,.18)} #craft .max{color:#888}
+  body.touch #craft{display:none}
+
+  /* ---- 버튼 (픽셀 프레임 + 아이콘, 눌림=프레임 반전) ---- */
+  .btn{position:absolute;display:flex;align-items:center;justify-content:center;color:var(--ink);font:inherit;font-size:var(--fs);
+    pointer-events:auto;touch-action:none;padding:0;margin:0;background:none;cursor:pointer;-webkit-appearance:none;appearance:none;text-shadow:var(--tsh);
+    border:calc(var(--px)*4) solid transparent;border-image:url(assets/btn.png) 4 fill / calc(var(--px)*4) stretch;image-rendering:pixelated;box-sizing:border-box}
+  .btn.down{border-image-source:url(assets/btn_down.png)}
+  .btn.down img,.btn.down span.t{transform:translateY(var(--px))}
+  .btn.zero{opacity:.45}
+  .badge{position:absolute;right:calc(var(--px)*-3);bottom:calc(var(--px)*-3);min-width:calc(var(--px)*9);height:calc(var(--px)*9);box-sizing:border-box;padding:0 calc(var(--px)*2);
+    background:#0a1626;border:var(--px) solid #7fe3ff;font-size:var(--fs-s);display:flex;align-items:center;justify-content:center;color:#ffe08a;font-style:normal;text-shadow:none;pointer-events:none}
+  #bMenu{position:relative;width:max(44px,10vh);height:max(44px,10vh);z-index:3}
+  #bMenu span.t{font-size:var(--fs);letter-spacing:calc(var(--px)*1)}
+
+  /* ---- 터치 전용 ---- */
+  .to{display:none}
+  body.touch .to{display:flex}
+  #joyzone,#tapzone{position:absolute;top:0;bottom:0;z-index:1;touch-action:none}
+  #joyzone{left:0;width:42%} #tapzone{left:42%;right:0}
+  body.lefty #joyzone{left:auto;right:0} body.lefty #tapzone{left:0;right:42%}
+  #joyhint{position:absolute;left:calc(var(--sl) + 6vh);bottom:calc(var(--sb) + 6vh);width:20vh;height:20vh;z-index:1;pointer-events:none;
+    background:
+      linear-gradient(#7fe3ff,#7fe3ff) center/ calc(var(--px)*2) 55% no-repeat,
+      linear-gradient(#7fe3ff,#7fe3ff) center/ 55% calc(var(--px)*2) no-repeat;opacity:.3}
+  body.lefty #joyhint{left:auto;right:calc(var(--sr) + 6vh)}
+  #joyhint.off{display:none!important}
+  #joy{position:fixed;display:none;width:20vh;height:20vh;transform:translate(-50%,-50%);z-index:4;pointer-events:none;
+    border:calc(var(--px)*2) solid rgba(127,227,255,.45);background:rgba(8,20,36,.28)}
+  #joythumb{position:absolute;left:50%;top:50%;width:9vh;height:9vh;background:rgba(127,227,255,.6);border:calc(var(--px)*2) solid #e8f6ff;transform:translate(-50%,-50%)}
+  #cluster{position:absolute;right:var(--sr);bottom:var(--sb);width:46vh;height:46vh;pointer-events:none;z-index:3}
+  body.lefty #cluster{right:auto;left:var(--sl);transform:scaleX(-1)}
+  body.lefty #cluster .btn>*{transform:scaleX(-1)}
+  body.lefty #cluster .btn.down img{transform:scaleX(-1) translateY(var(--px))}
+  #bAct{right:0;bottom:0;width:var(--bigw);height:var(--bigw);border-image-source:url(assets/act.png)}
+  #bAct.down{border-image-source:url(assets/act_down.png)}
+  #bAct img{width:calc(var(--px)*32)}
+  /* 보조 3개: 큰 버튼 중심에서 반지름 R 호 위 100/145/190도. R 최소 80px 로 작은 화면에서도 간격 확보 */
+  #bHeal{width:var(--sm);height:var(--sm);right:calc(13vh + .174*var(--R) - var(--sm)/2);bottom:calc(13vh + .985*var(--R) - var(--sm)/2)}
+  #bVent{width:var(--sm);height:var(--sm);right:calc(13vh + .819*var(--R) - var(--sm)/2);bottom:calc(13vh + .574*var(--R) - var(--sm)/2)}
+  #bLamp{width:var(--sm);height:var(--sm);right:calc(13vh + .985*var(--R) - var(--sm)/2);bottom:calc(13vh - .174*var(--R) - var(--sm)/2)}
+  #bCraft{position:absolute;left:50%;bottom:var(--sb);transform:translateX(-50%);display:none;gap:calc(var(--px)*3);padding:0 calc(var(--px)*4);min-height:max(48px,12vh);z-index:3;font-size:var(--fs);white-space:nowrap}
+  body.touch #bCraft.show{display:flex}
+  #bCraft.pulse{animation:pulse 1s steps(2) infinite}
+  @keyframes pulse{50%{filter:brightness(1.5)}}
+
+  /* ---- 모달 ---- */
+  .overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;background:rgba(2,6,14,.95);line-height:1.5;z-index:30;overflow:auto;padding:var(--st) var(--sr) var(--sb) var(--sl);box-sizing:border-box}
+  #sheet,#menu,#help{display:none;z-index:20;background:rgba(2,6,14,.82)}
+  .panel{width:min(94vw,185vh);max-height:94vh;overflow:auto;padding:calc(var(--px)*3) calc(var(--px)*4);text-align:left;--frame:url(assets/panel.png)}
+  .ph{display:flex;justify-content:space-between;align-items:center;gap:1vh;margin-bottom:1vh;color:#9fe8ff;font-size:var(--fs)}
+  body.lefty .ph{flex-direction:row-reverse}
+  .ph .meta{flex:1;color:var(--dim);font-size:var(--fs-s);font-weight:normal}
+  .ph .msg{color:#8fe6a0;font-weight:bold}
+  .rb{position:relative;display:flex;align-items:center;justify-content:center;min-height:max(48px,11vh);padding:0 calc(var(--px)*6);color:var(--ink);font:inherit;font-size:var(--fs);text-shadow:var(--tsh);
+    border:calc(var(--px)*4) solid transparent;border-image:url(assets/btn.png) 4 fill / calc(var(--px)*4) stretch;background:none;cursor:pointer;touch-action:manipulation;box-sizing:border-box}
+  .rb:active{border-image-source:url(assets/btn_down.png)}
+  #sheetBody{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:calc(var(--px)*2)}
+  .card{position:relative;display:flex;gap:calc(var(--px)*3);align-items:center;min-height:max(48px,13vh);padding:calc(var(--px)*0.5) calc(var(--px)*2);cursor:pointer;touch-action:manipulation;--frame:url(assets/card.png)}
+  .card.can{--frame:url(assets/card_can.png)} .card.sel{--frame:url(assets/card_sel.png);padding-right:calc(var(--px)*30)} .card.max{--frame:url(assets/card_max.png);opacity:.7}
+  .card .ci{flex:none;width:calc(var(--px)*16)}
+  .card .tx{min-width:0;flex:1}
+  .card .t{display:flex;align-items:baseline;gap:calc(var(--px)*2);font-size:var(--fs);white-space:nowrap;overflow:hidden}
+  .card .t .n{flex:none}
+  .card .e{color:var(--dim);font-size:var(--fs-s);font-weight:normal;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .card .c{display:flex;gap:calc(var(--px)*3);flex-wrap:wrap;font-size:var(--fs-s)}
+  .cc{display:flex;align-items:center;gap:calc(var(--px)*1)} .cc.no b{color:#ff9a9a} .cc.ok b{color:#8fe6a0}
+  .card .go{display:none;position:absolute;right:calc(var(--px)*2);top:50%;transform:translateY(-50%);width:calc(var(--px)*26);height:calc(var(--px)*22);min-height:44px;align-items:center;justify-content:center;font-size:var(--fs);
+    border:calc(var(--px)*4) solid transparent;border-image:url(assets/act.png) 4 fill / calc(var(--px)*4) stretch;text-shadow:var(--tsh);color:#fff;box-sizing:border-box}
+  .card.sel .go{display:flex} .card.sel.lack .go{display:none}
+  .card.just{animation:blink .3s steps(2) 2}
+  #menu .panel{width:min(70vw,84vh);display:flex;flex-direction:column;gap:calc(var(--px)*2)}
+  #help .panel{width:min(88vw,120vh)}
+  .hrow{display:flex;align-items:center;gap:calc(var(--px)*4);margin:calc(var(--px)*2) 0;font-size:var(--fs)}
+  .hrow .hi{flex:none;width:calc(var(--px)*24);display:flex;justify-content:center} .hrow .hd{color:var(--dim);font-weight:normal;font-size:var(--fs-s);display:block}
+  #rotate{display:none;z-index:40;background:#02050b;font-size:max(18px,5vw)}
+  #start h1{margin:0 0 .6vh;font-weight:normal;font-size:calc(14px*3*var(--f));letter-spacing:calc(var(--px)*1);color:#9fe8ff;text-shadow:calc(var(--px)*2) calc(var(--px)*2) 0 #0a1626}
+  #start .sub{color:var(--dim);margin-bottom:1.4vh;font-size:var(--fs);font-weight:normal}
+  #start table{border-collapse:collapse;margin-bottom:1.4vh}
+  #start td{padding:.3vh 1.4vh;text-align:left;font-size:var(--fs-s)} #start td:first-child{color:#ffe08a;text-align:right}
+  .tch{display:none} body.touch .tch{display:block} body.touch .kbd{display:none}
+  /* 화면이 4:3 쪽(태블릿, 데스크톱 창)이면 HUD 크기가 높이 기준이라 가로로 부딪히므로 축소 */
+  @media (max-aspect-ratio:8/5){ .hud,#hudTR,#cluster,#bCraft{zoom:.8} }
+  @media (max-aspect-ratio:7/5){ .hud,#hudTR,#cluster,#bCraft{zoom:.7} }
+  #victory{display:none;background:rgba(10,20,40,.7);z-index:25;pointer-events:none}
+  #victory h1{color:#ffd86b;font-weight:normal;font-size:calc(14px*2*var(--f));margin:0 0 .6vh}
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="game"></canvas>
+
+  <div id="joyzone" class="to"></div><div id="tapzone" class="to"></div>
+  <div id="joyhint" class="to"></div><div id="joy"><div id="joythumb"></div></div>
+
+  <div id="hudTL" class="hud">
+    <div class="bar" id="hpbar"><div class="f" id="hpfill"></div><span class="t">체력 <span id="hptxt"></span></span></div>
+    <div class="bar" id="o2bar"><div class="f" id="o2fill"></div><span class="t">산소 <span id="o2txt"></span></span></div>
+    <div id="zone"></div>
+  </div>
+  <div id="chips" class="hud"><div id="inv" class="fr"></div></div>
+  <div id="bossbar" class="hud"><div style="font-size:var(--fs-s);color:#ff9a9a">심연의 눈</div><div class="bar"><div class="f" id="bossfill"></div></div></div>
+  <div id="toast" class="hud fr"></div>
+  <div id="hudTR"><button id="bMenu" class="btn" aria-label="메뉴"><span class="t">II</span></button><canvas id="mini"></canvas></div>
+  <div id="craft" class="hud fr"></div>
+
+  <div id="cluster" class="to">
+    <button id="bHeal" class="btn" aria-label="회복"><img class="i16" src="assets/heart.png" alt=""><i class="badge" id="cntGel">0</i></button>
+    <button id="bVent" class="btn" aria-label="환기구"><img class="i16" src="assets/vent.png" alt=""><i class="badge" id="cntVent">0</i></button>
+    <button id="bLamp" class="btn" aria-label="램프"><img class="i16" src="assets/lamp.png" alt=""><i class="badge" id="cntLamp">0</i></button>
+    <button id="bAct" class="btn" aria-label="채굴·공격"><img id="actIcon" src="assets/pick.png" alt=""></button>
+  </div>
+  <button id="bCraft" class="btn"><img class="i16" src="assets/hammer.png" alt=""><span class="t">제작</span></button>
+
+  <div id="sheet" class="overlay">
+    <div class="panel fr">
+      <div class="ph"><span>제작</span><span class="meta">숫자 = 보유 / 필요 <span class="msg" id="sheetMsg"></span></span><button id="sheetClose" class="rb">닫기</button></div>
+      <div id="sheetBody"></div>
+    </div>
+  </div>
+  <div id="menu" class="overlay">
+    <div class="panel fr">
+      <div class="ph"><span>일시정지</span></div>
+      <button id="mContinue" class="rb">계속하기</button>
+      <button id="mHelp" class="rb">조작법 보기</button>
+      <button id="mSound" class="rb">소리: 켜짐</button>
+      <button id="mFull" class="rb">전체화면</button>
+      <button id="mLefty" class="rb">왼손 모드: 꺼짐</button>
+      <button id="mNew" class="rb">새 게임</button>
+    </div>
+  </div>
+  <div id="help" class="overlay">
+    <div class="panel fr">
+      <div class="ph"><span>조작법</span><button id="helpClose" class="rb">닫기</button></div>
+      <div class="hrow"><div class="hi"><img class="i16" src="assets/move.png" alt=""></div><div>왼쪽 화면을 끌어서 이동<span class="hd">처음 누른 곳에 조이스틱이 생긴다</span></div></div>
+      <div class="hrow"><div class="hi"><img class="i16" src="assets/harpoon.png" alt=""></div><div>오른쪽 아래 큰 버튼을 꾹 누르기<span class="hd">적이 가까우면 자동 공격, 아니면 앞쪽 채굴·상자·조개</span></div></div>
+      <div class="hrow"><div class="hi"><img class="i16" src="assets/pick.png" alt=""></div><div>화면을 직접 터치<span class="hd">누른 타일을 정밀하게 채굴 (램프·환기구 회수도 여기서)</span></div></div>
+      <div class="hrow"><div class="hi"><img class="i16" src="assets/hammer.png" alt=""></div><div>비콘 근처에서 제작 버튼<span class="hd">산소는 비콘·환기구 근처에서만 충전된다</span></div></div>
+    </div>
+  </div>
+
+  <div id="start" class="overlay">
+    <h1>ABYSS KEEPER</h1>
+    <div class="sub">심연의 파수꾼 — 꺼져가는 비콘을 되살려라</div>
+    <div class="kbd">
+      <table>
+        <tr><td>WASD</td><td>이동</td></tr>
+        <tr><td>좌클릭 (꾹)</td><td>채굴 · 상자 · 조개</td></tr>
+        <tr><td>우클릭 / Space</td><td>작살 공격</td></tr>
+        <tr><td>Q / E / F</td><td>램프 / 환기구 / 젤 회복</td></tr>
+        <tr><td>1 ~ 8</td><td>제작 (비콘 근처)</td></tr>
+        <tr><td>M / Esc</td><td>소리 / 메뉴</td></tr>
+      </table>
+    </div>
+    <div class="tch">
+      <div class="hrow" style="justify-content:flex-start"><div class="hi"><img class="i16" src="assets/move.png" alt=""></div><div style="text-align:left">왼쪽 드래그 = 이동</div></div>
+      <div class="hrow" style="justify-content:flex-start"><div class="hi"><img class="i16" src="assets/harpoon.png" alt=""></div><div style="text-align:left">큰 버튼 꾹 = 채굴 · 공격</div></div>
+      <div class="hrow" style="justify-content:flex-start"><div class="hi"><img class="i16" src="assets/hammer.png" alt=""></div><div style="text-align:left">비콘 근처 = 제작</div></div>
+    </div>
+    <div id="saveinfo" class="sub"></div>
+    <div style="color:#ffe08a;font-size:var(--fs)">화면을 터치(클릭)해서 시작</div>
+  </div>
+  <div id="victory" class="overlay">
+    <h1>비콘이 되살아났다!</h1>
+    <div>심연의 눈을 쓰러뜨렸다. 계속 탐험할 수 있다.</div>
+  </div>
+  <div id="rotate" class="overlay"><div style="font-size:2em">↻</div><div>화면을 가로로 돌려주세요</div></div>
+</div>
+<script src="data.js"></script>
+<script src="game.js"></script>
+</body>
+</html>

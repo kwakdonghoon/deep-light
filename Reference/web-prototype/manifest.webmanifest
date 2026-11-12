@@ -1,0 +1,11 @@
+{
+  "name": "Abyss Keeper",
+  "short_name": "Abyss",
+  "description": "침몰한 도시 아래 비콘을 되살리는 픽셀아트 모험",
+  "start_url": "./index.html",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#02050b",
+  "theme_color": "#02050b",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
