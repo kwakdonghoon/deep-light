@@ -38,6 +38,59 @@ namespace Abyss
         public static Sprite Frame(string name) { return Resources.Load<Sprite>("Art/Frames/" + name); }
         public static Sprite Icon(string name) { return Resources.Load<Sprite>("Art/Icons/" + name); }
 
+        // ---------- 콘솔 패드 모양 조이스틱 ----------
+        static Sprite padBase, padThumb;
+
+        static Sprite MakePadSprite(int n, System.Func<float, float, int, int, Color32> shade)
+        {
+            var tex = new Texture2D(n, n, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp };
+            var px = new Color32[n * n];
+            for (int y = 0; y < n; y++)
+                for (int x = 0; x < n; x++) px[y * n + x] = shade(x - (n - 1) / 2f, y - (n - 1) / 2f, x, y);
+            tex.SetPixels32(px); tex.Apply(false);
+            return Sprite.Create(tex, new Rect(0, 0, n, n), new Vector2(0.5f, 0.5f), 1f);
+        }
+
+        /// <summary>패드 바닥판: 어두운 원판 + 밝은 테두리 + 안쪽 홈 + 상하좌우 삼각 화살표 (콘솔 패드의 아날로그 스틱 자리).</summary>
+        public static Sprite PadBase()
+        {
+            if (padBase != null) return padBase;
+            padBase = MakePadSprite(64, (dx, dy, x, y) =>
+            {
+                float r = Mathf.Sqrt(dx * dx + dy * dy);
+                if (r > 31.5f) return new Color32(0, 0, 0, 0);
+                if (r > 30f) return new Color32(6, 14, 26, 235);                       // 바깥 윤곽
+                if (r > 27f) return (dx - dy) < 0 ? new Color32(120, 168, 214, 235) : new Color32(52, 86, 128, 235);   // 테두리: 왼쪽 위가 밝다
+                // 상하좌우 화살표 (바깥쪽을 향하는 삼각형)
+                float ax = Mathf.Abs(dx), ay = Mathf.Abs(dy);
+                float along = Mathf.Max(ax, ay), across = Mathf.Min(ax, ay);          // 화살표 축 방향 거리 / 수직 거리
+                if (along > 15f && along < 23f && across < (23f - along) * 0.8f + 0.5f) return new Color32(127, 227, 255, 235);
+                if (r > 8.5f && r < 10f) return new Color32(30, 56, 92, 235);          // 안쪽 홈
+                return new Color32(12, 28, 50, 215);                                   // 판 바닥
+            });
+            return padBase;
+        }
+
+        /// <summary>패드 스틱 캡: 입체감 있는 둥근 버튼 (왼쪽 위가 밝고 오른쪽 아래가 어둡다), 가운데 오목한 홈과 반짝임.</summary>
+        public static Sprite PadThumb()
+        {
+            if (padThumb != null) return padThumb;
+            padThumb = MakePadSprite(40, (dx, dy, x, y) =>
+            {
+                float r = Mathf.Sqrt(dx * dx + dy * dy);
+                if (r > 19.5f) return new Color32(0, 0, 0, 0);
+                if (r > 18f) return new Color32(6, 14, 26, 255);
+                float lit = Mathf.Clamp01(0.5f + (-dx * 0.55f + dy * 0.75f) / 22f);   // 조명 방향: 왼쪽 위 (y 는 위로 증가)
+                Color32 dark = new Color32(34, 64, 104, 255), light = new Color32(150, 196, 238, 255);
+                Color32 body = Color32.Lerp(dark, light, lit);
+                if (r > 8f && r < 10f) body = Color32.Lerp(body, new Color32(20, 40, 72, 255), 0.55f);          // 가운데 오목한 홈
+                if (r < 8f) body = Color32.Lerp(new Color32(22, 44, 78, 255), new Color32(96, 140, 190, 255), lit);   // 홈 안쪽
+                if (dx < -6f && dx > -10f && dy > 6f && dy < 9f && r < 15f) body = new Color32(235, 247, 255, 255);   // 반짝이는 하이라이트
+                return body;
+            });
+            return padThumb;
+        }
+
         public static Font Font14, Font11;
 
         public static void LoadFonts()

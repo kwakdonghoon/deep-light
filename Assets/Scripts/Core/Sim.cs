@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace Abyss
 {
-    public enum Sfx { Mine, Break, Swing, Hit, Hurt, Pick, Craft, Chest, Boss }
+    public enum Sfx { Mine, Break, Swing, Hit, Hurt, Pick, Craft, Chest, Boss, Alarm }
 
     public sealed class Player
     {
@@ -73,6 +73,8 @@ namespace Abyss
         public readonly List<int> exploredDirty = new List<int>();
 
         public float time, camShake;
+        float alarmT;                 // 저산소 경고음 간격
+        public float hurtAt = -99f;   // 마지막으로 피해를 입은 시각 (HUD 의 붉은 번쩍임용)
         public bool started, victory, mining;
         public int cursorTx, cursorTy; public bool cursorReach;
 
@@ -107,7 +109,7 @@ namespace Abyss
         public int maxZone;        // 지금까지 도달한 가장 깊은 구역(세션 목표용)
 
         // ---------- 이야기: 무전(비트), 장(chapter), 한동안 막혔을 때의 힌트 ----------
-        struct StoryItem { public float t; public string text; }
+        struct StoryItem { public float t; public string text; public Func<string> make; }   // make: 나올 때 문장을 만든다(방향 안내가 뒤늦게 낡지 않게). null 을 돌려주면 건너뛴다
         readonly List<StoryItem> storyQ = new List<StoryItem>();
         float storyNextT, lastProgressT, hintT; int hintedGoal = -1, lastChapter;
         public int storyMask;                                       // 이미 나온 비트(저장됨)
@@ -134,6 +136,7 @@ namespace Abyss
                 if (time >= storyQ[i].t)
                 {
                     var it = storyQ[i]; storyQ.RemoveAt(i);
+                    if (it.make != null) { it.text = it.make(); if (string.IsNullOrEmpty(it.text)) continue; }   // 그 사이 목표가 없어졌으면 말하지 않는다
                     storyLog.Add(it.text); if (storyLog.Count > 60) storyLog.RemoveAt(0);
                     if (StoryLine != null) StoryLine(it.text, StoryShow);
                 }
@@ -156,8 +159,62 @@ namespace Abyss
                 {
                     hintedGoal = g; lastProgressT = time;
                     string h = Data.GoalHints[g]; storyLog.Add(h); if (StoryLine != null) StoryLine(h, StoryShow);
+                    // 목표의 실제 위치를 알 수 있으면 다음 줄로 방향과 거리를 말로 알려 준다 (화면 화살표 대신 아라의 목소리로 유도)
+                    float gx = 0, gy = 0;
+                    if (GoalTarget(out gx, out gy))
+                    {
+                        // 문장은 나올 때(4.8초 뒤) 그 시점의 위치로 만든다
+                        storyQ.Add(new StoryItem { t = time + StoryGap, make = () => { float x, y; return GoalTarget(out x, out y) ? DirectionLine(x, y) : null; } });
+                        storyNextT = time + StoryGap * 2f;
+                    }
                 }
             }
+        }
+
+        /// <summary>지금 목표의 실제 위치(월드 px). 초반(1~2장, 목표 0~8번)에서만 길잡이로 쓰고, 이후는 직접 찾게 한다. 위치를 특정할 수 없으면 false.</summary>
+        public bool GoalTarget(out float tx, out float ty)
+        {
+            tx = ty = 0; int g = CurrentGoalIndex(); if (g < 0 || g > 8) return false;
+            float bestD = float.MaxValue; bool found = false;
+            switch (g)
+            {
+                case 0:   // 비콘 곁 광맥 중 아직 남은 가장 가까운 곳
+                    foreach (var v in World.StarterVeins)
+                    {
+                        if (world.Get(v[0], v[1]) == Tile.Floor) continue;
+                        float x = v[0] * World.TS + 8, y = v[1] * World.TS + 8, d = Hyp(x - P.x, y - P.y);
+                        if (d < bestD) { bestD = d; tx = x; ty = y; found = true; }
+                    }
+                    return found;
+                case 1:   // 가장 가까운 해파리
+                    foreach (var e in enemies)
+                    {
+                        if (e.type != EnemyType.Jelly || e.hp <= 0) continue;
+                        float d = Hyp(e.x - P.x, e.y - P.y);
+                        if (d < bestD) { bestD = d; tx = e.x; ty = e.y; found = true; }
+                    }
+                    return found;
+                case 3:   // 시작 상자
+                    if (world.Get(World.StarterChest[0], World.StarterChest[1]) != Tile.Chest) return false;
+                    tx = World.StarterChest[0] * World.TS + 8; ty = World.StarterChest[1] * World.TS + 8; return true;
+                case 7: case 8:   // 미니보스 소굴
+                    if (miniDead[g - 7]) return false;
+                    tx = World.MiniLairs[g - 7][0] * World.TS + 8; ty = World.MiniLairs[g - 7][1] * World.TS + 8; return true;
+                default:  // 제작 목표(2, 4, 5)는 비콘으로
+                    if (g == 6) return false;
+                    tx = World.BX; ty = World.BY; return true;
+            }
+        }
+
+        /// <summary>플레이어 기준 방향과 거리를 아라의 말투로 (예: "아라: 지금은 오른쪽 아래쪽이에요. 조금 떨어져 있어요.").</summary>
+        public string DirectionLine(float tx, float ty, string subject = "지금은")
+        {
+            float dx = tx - P.x, dy = ty - P.y, d = Hyp(dx, dy);
+            string h = Mathf.Abs(dx) > Mathf.Abs(dy) * 0.4f ? (dx > 0 ? "오른쪽" : "왼쪽") : "";
+            string v = Mathf.Abs(dy) > Mathf.Abs(dx) * 0.4f ? (dy > 0 ? "아래쪽" : "위쪽") : "";   // 월드 y 는 아래로 증가
+            string dir = (h + " " + v).Trim();
+            string dist = d < 70f ? "바로 근처예요." : d < 200f ? "조금 떨어져 있어요." : "꽤 멀어요. 산소를 살피면서 가요.";
+            return dir.Length == 0 ? "아라: 바로 근처예요. 주변을 둘러봐요." : "아라: " + subject + " " + dir + "이에요. " + dist;
         }
 
         /// <summary>보상을 받지 않은 가장 앞의 목표 번호(없으면 -1).</summary>
@@ -422,6 +479,7 @@ namespace Abyss
             if (!started) return;
             if (P.invuln > 0 && !ignoreInv) return;
             P.hp -= n; if (!ignoreInv) P.invuln = 0.9f;
+            hurtAt = time;   // 피격 붉은 번쩍임은 '맞은 순간'만 (재시작·불러오기 직후의 무적 시간에는 켜지지 않는다)
             camShake = 0.25f; PlaySfx(Sfx.Hurt); if (Buzz != null) Buzz(40);
             for (int i = 0; i < 6; i++) SpawnParticle(P.x, P.y, Rr(-40, 40), Rr(-40, 40), 0.4f, new Color32(255, 107, 107, 255));
             if (P.hp <= 0) Die();
@@ -481,7 +539,15 @@ namespace Abyss
             {
                 float dm = Data.Up[(int)Track.Fins][P.lvl[(int)Track.Fins]].drain;   // 추진 핀 Lv3+ 는 산소를 덜 쓴다
                 P.o2 -= (Data.O2DrainBase + Zone * Data.O2DrainPerZone) * (dm > 0 ? dm : 1f) * dt;
-                if (P.o2 < MaxO2 * 0.22f) Beat("lowO2");
+                // 저산소 경고음: 25% 아래에서 숨이 줄어드는 동안 2.2초마다 짧게 두 번 삑 (바닥나면 피해가 시작되므로 놓치지 않게)
+                if (P.o2 < MaxO2 * 0.25f && P.o2 > 0f) { alarmT -= dt; if (alarmT <= 0f) { alarmT = 2.2f; PlaySfx(Sfx.Alarm); } } else alarmT = 0f;
+                if (P.o2 < MaxO2 * 0.22f)
+                {
+                    int lb = Array.IndexOf(Data.StoryIds, "lowO2"); bool fresh = lb >= 0 && (storyMask & (1 << lb)) == 0;
+                    Beat("lowO2");
+                    // 처음 숨이 차오를 때는 비콘이 어느 쪽인지도 말로 알려 준다
+                    if (fresh) { storyQ.Add(new StoryItem { t = Mathf.Max(time, storyNextT), make = () => DirectionLine(World.BX, World.BY, "비콘은") }); storyNextT = Mathf.Max(time, storyNextT) + StoryGap; }
+                }
                 if (P.o2 <= 0)
                 {
                     P.o2 = 0; P.suffocate += dt;

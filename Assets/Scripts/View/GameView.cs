@@ -318,6 +318,113 @@ namespace Abyss
             playerSr.sprite = diverSheet[diverDir, f];
         }
 
+        // ---- 비콘 길잡이: 비콘이 화면 밖일 때, 먼 등대 불빛처럼 화면 가장자리에서 그쪽 방향으로 은은하게 빛난다. 산소가 줄면 붉은빛으로 빠르게 깜박인다. ----
+        readonly List<SpriteRenderer> compassPool = new List<SpriteRenderer>();
+        Sprite compassGlowSp, compassArrowSp;
+        void UpdateBeaconCompass(Player P)
+        {
+            bool show = sim.started;
+            Vector3 vp = Cam.WorldToViewportPoint(Wp(World.BX, World.BY));
+            if (vp.z <= 0f || (vp.x > 0.02f && vp.x < 0.98f && vp.y > 0.02f && vp.y < 0.98f)) show = false;     // 화면 안에 있으면 필요 없다
+            if (!show) { for (int i = 0; i < compassPool.Count; i++) compassPool[i].enabled = false; return; }
+            if (compassGlowSp == null) compassGlowSp = IntroSequence.MakeGlow();
+            float dx = vp.x - 0.5f, dy = vp.y - 0.5f, m = 0.07f;
+            float t = Mathf.Min(dx != 0f ? (0.5f - m) / Mathf.Abs(dx) : float.MaxValue, dy != 0f ? (0.5f - m) / Mathf.Abs(dy) : float.MaxValue);
+            Vector3 w = Cam.ViewportToWorldPoint(new Vector3(0.5f + dx * t, 0.5f + dy * t, 10f)); w.z = 0f;
+            float o2 = sim.MaxO2 > 0 ? P.o2 / sim.MaxO2 : 1f;
+            bool low = o2 < 0.4f;
+            float pulse = low ? 0.55f + 0.45f * Mathf.Abs(Mathf.Sin(Time.time * 5f)) : 0.7f + 0.3f * Mathf.Sin(Time.time * 2f);
+            Color c = low ? new Color(1f, 0.6f, 0.4f, 1f) : new Color(0.6f, 0.92f, 1f, 1f);
+            var g = Pooled(compassPool, 0, compassGlowSp, 102); g.enabled = true;
+            g.transform.position = w; g.transform.localScale = Vector3.one * (2.4f + (low ? 0.5f : 0f) * pulse); c.a = 0.55f * pulse; g.color = c;
+            // 빛 안쪽(화면 중심 쪽)에 비콘 방향을 가리키는 작은 화살표
+            if (compassArrowSp == null) compassArrowSp = PixelArt.FromRows(new[] { "..x..", ".xxx.", "xxxxx", ".xxx." }, new Dictionary<char, Color32> { { 'x', new Color32(255, 255, 255, 255) } }).ToSprite();
+            Vector2 dv = new Vector2(dx, dy).normalized;
+            Pooled(compassPool, 1, pixelSp, 103);   // 풀은 번호 순서대로 만들어지므로 중심점(1번)을 먼저 확보한다
+            var ar = Pooled(compassPool, 2, compassArrowSp, 103); ar.enabled = true;
+            ar.transform.position = w - new Vector3(dv.x, dv.y, 0f) * 0.9f; ar.transform.localScale = Vector3.one * 2.2f;
+            ar.transform.localEulerAngles = new Vector3(0, 0, Mathf.Atan2(dv.y, dv.x) * Mathf.Rad2Deg - 90f);
+            var arc = c; arc.a = 0.9f * pulse; ar.color = arc;
+            var core = Pooled(compassPool, 1, pixelSp, 103); core.enabled = true;
+            core.transform.position = w; core.transform.localScale = new Vector3(4f, 4f, 1f); c.a = 0.95f * pulse; c = Color.Lerp(c, Color.white, 0.5f); c.a = 0.95f * pulse; core.color = c;
+        }
+
+        // ---- 목표 반짝임: 초반 목표(광맥·해파리·상자·소굴)가 어둠 속에서 가까워지면 희미하게 반짝여 '저기구나' 하고 알게 한다 (화면 화살표 없이 세계 안에서 유도) ----
+        readonly List<SpriteRenderer> glintPool = new List<SpriteRenderer>();
+        void UpdateGoalGlint(Player P)
+        {
+            float gx = 0, gy = 0; bool on = sim.started && sim.GoalTarget(out gx, out gy);   // out 변수를 먼저 0 으로 초기화해 한 번만 호출한다
+            float dx = gx - P.x, dy = gy - P.y, dist = Mathf.Sqrt(dx * dx + dy * dy);
+            on = on && dist > 12f && dist < 240f && !(Mathf.Abs(gx - World.BX) < 1f && Mathf.Abs(gy - World.BY) < 1f);   // 비콘 목표는 이미 빛나고, 너무 멀면 보이지 않는다
+            if (!on) { for (int i = 0; i < glintPool.Count; i++) glintPool[i].enabled = false; return; }
+            float near = 1f - Mathf.Clamp01((dist - 40f) / 200f);                                  // 가까울수록 또렷하게
+            float tw = 0.35f + 0.65f * Mathf.Abs(Mathf.Sin(Time.time * 2.6f));                    // 반짝
+            float a = Mathf.Clamp01(0.25f + 0.75f * near) * tw;
+            float[] ox = { 0, -3, 3, 0, 0 }, oy = { 0, 0, 0, -3, 3 };
+            for (int i = 0; i < 5; i++)
+            {
+                var sr = Pooled(glintPool, i, pixelSp, 101); sr.enabled = true;
+                float s = i == 0 ? 2f : 1f;
+                sr.transform.position = Wp(Mathf.Round(gx + ox[i]), Mathf.Round(gy + oy[i])); sr.transform.localScale = new Vector3(s, s, 1);
+                sr.color = new Color(1f, 0.9f, 0.55f, a * (i == 0 ? 1f : 0.7f));
+            }
+            for (int i = 5; i < glintPool.Count; i++) glintPool[i].enabled = false;
+        }
+
+        // ---- 물고기 떼 장식: 플레이어 주변 바닥 위를 약하게 떠다니는 작은 물고기 무리 (시뮬과 무관한 순수 연출, 벽은 피해 다닌다) ----
+        sealed class FishSchool { public int n = 5; public float x, y, ang, spd, turn, tt; public float[] ox = new float[5], oy = new float[5], ph = new float[5]; }
+        readonly List<FishSchool> schools = new List<FishSchool>();
+        readonly List<SpriteRenderer> fishPool = new List<SpriteRenderer>();
+        Sprite fishSp;
+        const int SchoolCount = 2;                 // 동시에 떠다니는 무리 수 (전엔 4 → 너무 자주 보여서 절반으로)
+        float fishNextSpawn;                       // 새 무리가 나타날 수 있는 가장 이른 시각 (한 무리가 사라진 뒤 한참 있다가 다시 나온다)
+
+        bool FishFloor(float px, float py)
+        {
+            int tx = Mathf.FloorToInt(px / World.TS), ty = Mathf.FloorToInt(py / World.TS);
+            return World.InBounds(tx, ty) && sim.world.Get(tx, ty) == Tile.Floor;
+        }
+
+        void UpdateFishSchools(Player P)
+        {
+            if (fishSp == null) fishSp = TitleScene.MakeFish();
+            float dt = Time.deltaTime;
+            for (int i = schools.Count - 1; i >= 0; i--)   // 너무 멀어진 무리는 거둔다 (아래에서 가까운 곳에 새로 생긴다)
+            {
+                var s = schools[i]; float dx = s.x - P.x, dy = s.y - P.y;
+                if (dx * dx + dy * dy > 300f * 300f) schools.RemoveAt(i);
+            }
+            for (int tries = 0; schools.Count < SchoolCount && tries < 12 && Time.time >= fishNextSpawn; tries++)
+            {
+                float a = Random.value * 6.2832f, d = 130f + Random.value * 110f, sx = P.x + Mathf.Cos(a) * d, sy = P.y + Mathf.Sin(a) * d;   // 화면 가장자리 근처에서 나타난다
+                if (!FishFloor(sx, sy)) continue;
+                var s = new FishSchool { n = Random.Range(3, 6), x = sx, y = sy, ang = Random.value * 6.2832f, spd = 10f + Random.value * 8f, tt = 1f + Random.value * 2f };
+                for (int k = 0; k < 5; k++) { s.ox[k] = -k * 4f + (Random.value - 0.5f) * 3f; s.oy[k] = (Random.value - 0.5f) * 12f; s.ph[k] = Random.value * 6.28f; }
+                schools.Add(s);
+                fishNextSpawn = Time.time + 12f + Random.value * 18f;   // 다음 무리는 12~30초 뒤에야 나타난다 (사라지자마자 다시 나오지 않게)
+            }
+            int n = 0;
+            foreach (var s in schools)
+            {
+                s.tt -= dt; if (s.tt <= 0f) { s.turn = (Random.value - 0.5f) * 1.6f; s.tt = 1f + Random.value * 2f; }
+                s.ang += s.turn * dt;
+                float cx = Mathf.Cos(s.ang), cy = Mathf.Sin(s.ang);
+                float nx = s.x + cx * s.spd * dt, ny = s.y + cy * s.spd * dt;
+                if (FishFloor(nx + cx * 10f, ny + cy * 10f) && FishFloor(nx, ny)) { s.x = nx; s.y = ny; }
+                else { s.ang += 2.0f + Random.value * 1.4f; s.tt = 0.5f; }   // 벽이 나오면 방향을 크게 튼다
+                for (int k = 0; k < s.n; k++)
+                {
+                    float wob = Mathf.Sin(Time.time * 3f + s.ph[k]) * 1.2f;
+                    float fx = s.x + cx * s.ox[k] - cy * (s.oy[k] + wob), fy = s.y + cy * s.ox[k] + cx * (s.oy[k] + wob);
+                    var sr = Pooled(fishPool, n++, fishSp, 4); sr.enabled = true;
+                    sr.transform.position = Wp(Mathf.Round(fx), Mathf.Round(fy));
+                    sr.flipX = cx > 0f;   // 물고기 그림은 기본이 왼쪽을 본다
+                    sr.color = new Color(0.62f, 0.86f, 1f, 0.4f);   // 더 옅게
+                }
+            }
+            for (int i = n; i < fishPool.Count; i++) fishPool[i].enabled = false;
+        }
+
         // ---- 발쪽 거품: 헤엄칠 때 발(오리발) 뒤에서 작은 거품이 뽀글뽀글 올라온다 (시뮬과 무관한 순수 연출) ----
         struct FootBubble { public float x, y, vx, vy, life, max, size; }
         readonly List<FootBubble> footBubbles = new List<FootBubble>();
@@ -365,6 +472,9 @@ namespace Abyss
             playerSr.transform.position = Wp(P.x, P.y + bobY); playerSr.flipX = P.face < 0;
             if (diverSheet != null) UpdateDiverFrame(P);
             UpdateFootBubbles(P);
+            UpdateFishSchools(P);
+            UpdateGoalGlint(P);
+            UpdateBeaconCompass(P);
             // 비콘 깜빡임: 미세하게 떨리고, 몇 초마다 '깜빡-깜빡' 점멸 (색만 바뀌며 조명·규칙에는 영향 없음)
             { float ph = Time.time % 4.5f, dip = (ph < 0.10f || (ph > 0.26f && ph < 0.36f)) ? 0.3f : 1f, f = (0.9f + 0.1f * Mathf.Sin(Time.time * 17f) * Mathf.Sin(Time.time * 7.3f)) * dip; beaconSr.color = new Color(f, f, f, 1f); }
             playerSr.color = (P.invuln > 0 && Mathf.FloorToInt(P.invuln * 20) % 2 == 0) ? new Color(1, 1, 1, 0.4f) : Color.white;
@@ -484,7 +594,7 @@ namespace Abyss
             var P = sim.P;
             int cx = Mathf.RoundToInt(Mathf.Clamp(P.x - VW / 2f, 0, World.W * 16 - VW));
             int cy = Mathf.RoundToInt(Mathf.Clamp(P.y - 90f, 0, World.H * 16 - 180));
-            if (sim.camShake > 0) { cx += Random.Range(-2, 3); cy += Random.Range(-2, 3); }
+            if (sim.camShake > 0 && !GameSettings.ReduceFx) { cx += Random.Range(-2, 3); cy += Random.Range(-2, 3); }   // '화면 효과 줄이기'를 켜면 흔들지 않는다
             CamPx = new Vector2(cx, cy);
             Cam.transform.position = new Vector3((cx + VW / 2f) / 16f, -(cy + 90f) / 16f, -10f);
             lightSr.transform.position = new Vector3((cx + VW / 2f) / 16f, -(cy + 90f) / 16f, 0);

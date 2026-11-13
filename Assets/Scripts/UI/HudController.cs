@@ -42,6 +42,8 @@ namespace Abyss
         readonly Text[] chipTxt = new Text[5];
         RectTransform bossRt, bossFill;
         RectTransform toastRt; Text toastTxt; CanvasGroup toastCg; float toastTimer, toastShown;
+        readonly List<Image> dotPlaced = new List<Image>(); readonly List<Vector3> placedList = new List<Vector3>(); float placedScanAt = -9f;   // 미니맵: 설치한 램프(노랑)·환기구(청록) 작은 점
+        Image dotGoal, dotArrow, dotBeaconArrow;   // 미니맵: 지금 목표 점(맥동), 내가 보는 방향 화살표, 비콘 방향 화살표(플레이어 곁을 돌며 비콘 쪽을 가리킴)
         RectTransform miniRt, trRt; RawImage miniRaw; Image dotPlayer, dotBeacon, dotBoss; readonly List<Image> dotRuins = new List<Image>(), dotMinis = new List<Image>(), dotGuide = new List<Image>();
         Text craftText; GameObject craftPanel;
         GameObject touchRoot, zones, cluster;
@@ -50,7 +52,7 @@ namespace Abyss
         RectTransform joyRing, joyThumb, joyHint; Image joyHintA, joyHintB;
         GameObject sheetGo, menuGo, helpGo, startGo, victoryGo, rotateGo;
         Image hurtFlash, lowO2Flash;
-        Text sheetMsg, menuNewTxt, menuSoundTxt, menuLeftyTxt, startInfoTxt;
+        Text sheetMsg, menuNewTxt, menuSoundTxt, menuMusicTxt, menuBrightTxt, menuFxTxt, menuLeftyTxt, startInfoTxt;
         string curActIcon = "pick";
         float hudT, saveInfoT;
         int lastZone = -1;
@@ -66,7 +68,7 @@ namespace Abyss
         public void Init(Sim s, GameView v, SfxPlayer sf)
         {
             sim = s; view = v; sfx = sf;
-            TouchMode = Application.isMobilePlatform || ForceTouch;
+            TouchMode = true;   // 모든 플랫폼(모바일, PC 빌드, 에디터)에서 같은 화면: 조이스틱과 행동 버튼. PC 에서는 키보드·마우스도 같이 동작한다 (개발 빌드/에디터는 T 키로 키보드용 화면 전환)
             try { lefty = PlayerPrefs.GetInt("abyss_lefty", 0) == 1; } catch (Exception) { }
             UiKit.LoadFonts();
             Build();
@@ -113,14 +115,14 @@ namespace Abyss
         Text T11(Transform p, string s, Color c, TextAnchor a = TextAnchor.MiddleCenter, string n = "txt") { return UiKit.Txt(p, s, UiKit.Font11, Fs(11), c, a, n); }
         void Lay(Action a) { layouts.Add(a); }
 
-#if UNITY_EDITOR
-        /// <summary>유니티 에디터에서만 보이는 키보드 단축키 표시: 버튼 오른쪽 아래 모서리에 작은 키캡을 붙인다.</summary>
+#if UNITY_EDITOR || UNITY_STANDALONE
+        /// <summary>에디터와 PC 빌드에서 보이는 키보드 단축키 표시(모바일에서는 컴파일되지 않는다): 버튼 왼쪽 위 모서리에 작은 키캡을 붙인다 (수량 뱃지는 오른쪽 아래).</summary>
         void KeyTag(Transform parent, string label)
         {
             var bg = UiKit.Img(parent, null, new Color32(10, 22, 38, 235), false, "keytag");
             var tx = T11(bg.rectTransform, label, new Color32(255, 224, 138, 255), TextAnchor.MiddleCenter, "key"); UiKit.Stretch(tx.rectTransform);
             var rt = bg.rectTransform;
-            Lay(() => { tx.fontSize = Fs(11); float h = Fs(11) + px * 3, w = Fs(11) * 0.65f * label.Length + px * 5; UiKit.Place(rt, 1, 0, 1, 0, -px, px, Mathf.Max(w, h), h); });
+            Lay(() => { tx.fontSize = Fs(11); float h = Fs(11) + px * 3, w = Fs(11) * 0.65f * label.Length + px * 5; UiKit.Place(rt, 0, 1, 0, 1, px, -px, Mathf.Max(w, h), h); });   // 왼쪽 위 모서리: 오른쪽 아래의 수량 뱃지와 겹치지 않게
         }
 #endif
 
@@ -302,7 +304,7 @@ namespace Abyss
             var rel = UiKit.Relay(menuBtnImg); rel.Down = e => menuBtnImg.sprite = UiKit.Frame("btn_down"); rel.Up = e => menuBtnImg.sprite = UiKit.Frame("btn");
             rel.Click = e => { if (sim.started) { if (menuOpen) CloseMenu(); else OpenMenu(); } };
             menuBtnRt = mb;
-#if UNITY_EDITOR
+#if UNITY_EDITOR || UNITY_STANDALONE
             KeyTag(mb, "Esc");
 #endif
 
@@ -312,6 +314,11 @@ namespace Abyss
             miniRaw = new GameObject("MiniTex", typeof(RectTransform)).AddComponent<RawImage>(); miniRaw.transform.SetParent(miniRt, false);
             miniRaw.raycastTarget = false; UiKit.Stretch(miniRaw.rectTransform, px * 3, px * 3, px * 3, px * 3);
             dotBeacon = UiKit.Img(miniRt, null, Color.white); dotPlayer = UiKit.Img(miniRt, null, Color.white); dotBoss = UiKit.Img(miniRt, null, new Color32(192, 64, 64, 255));
+            dotGoal = UiKit.Img(miniRt, null, new Color32(255, 224, 138, 255), false, "dotGoal"); dotGoal.gameObject.SetActive(false);
+            var arrowPal = new Dictionary<char, Color32> { { 'x', new Color32(255, 255, 255, 255) } };
+            var arrowSp = PixelArt.FromRows(new[] { "..x..", ".xxx.", "xxxxx", ".xxx." }, arrowPal).ToSprite();
+            dotArrow = UiKit.Img(miniRt, arrowSp, Color.white, false, "dotArrow"); dotArrow.preserveAspect = true;
+            dotBeaconArrow = UiKit.Img(miniRt, arrowSp, new Color32(140, 232, 255, 255), false, "dotBeaconArrow"); dotBeaconArrow.preserveAspect = true;
             for (int i = 0; i < World.StarterVeins.Length; i++) dotGuide.Add(UiKit.Img(miniRt, null, new Color32(224, 144, 74, 255)));   // 초반 안내: 비콘 곁 광맥(주황)
             dotGuide.Add(UiKit.Img(miniRt, null, new Color32(255, 216, 107, 255)));                                                   // 초반 안내: 시작 상자(금색)
             for (int i = 0; i < World.MiniLairs.Length; i++) dotMinis.Add(UiKit.Img(miniRt, null, new Color32(255, 120, 60, 255)));   // 미니보스 소굴(처치하면 사라짐)
@@ -342,6 +349,8 @@ namespace Abyss
         void BuildTouch()
         {
             touchRoot = new GameObject("Touch", typeof(RectTransform)); touchRoot.transform.SetParent(canvasRt, false); UiKit.Stretch((RectTransform)touchRoot.transform);
+            // 조이스틱/탭 영역은 화면 전체를 덮는 투명한 터치 면이므로 맨 아래(safe 보다 뒤)에 둔다. 위에 있으면 제작·행동 버튼 같은 UI 의 터치를 가로채 버튼이 눌리지 않는다.
+            touchRoot.transform.SetSiblingIndex(0);
             zones = new GameObject("Zones", typeof(RectTransform)); zones.transform.SetParent(touchRoot.transform, false); UiKit.Stretch((RectTransform)zones.transform);
             var jz = UiKit.Img(zones.transform, null, new Color(0, 0, 0, 0), true, "JoyZone"); var tz = UiKit.Img(zones.transform, null, new Color(0, 0, 0, 0), true, "TapZone");
             Lay(() =>
@@ -371,21 +380,22 @@ namespace Abyss
 
             // 힌트(조이스틱 자리 표시)와 조이스틱 시각물
             joyHint = UiKit.Rect("JoyHint", touchRoot.transform);
-            joyHintA = UiKit.Img(joyHint, null, new Color(0.5f, 0.89f, 1f, 0.3f)); joyHintB = UiKit.Img(joyHint, null, new Color(0.5f, 0.89f, 1f, 0.3f));
-            var ringSprite = UiKit.BoxSprite(16, 2, new Color32(8, 20, 36, 72), new Color32(127, 227, 255, 115));
-            var thumbSprite = UiKit.BoxSprite(16, 2, new Color32(127, 227, 255, 153), new Color32(232, 246, 255, 255));
-            var ringImg = UiKit.Img(touchRoot.transform, ringSprite, Color.white, false, "JoyRing"); ringImg.type = Image.Type.Sliced; ringImg.pixelsPerUnitMultiplier = 1f / 2f; joyRing = ringImg.rectTransform;
-            var thumbImg = UiKit.Img(joyRing, thumbSprite, Color.white, false, "JoyThumb"); thumbImg.type = Image.Type.Sliced; joyThumb = thumbImg.rectTransform;
+            // 콘솔 패드 느낌: 화살표가 새겨진 원판(바닥)과 입체 스틱 캡. 평소엔 반투명 바닥만 보이고, 누르면 그 자리에 바닥+캡이 나타난다.
+            joyHintA = UiKit.Img(joyHint, UiKit.PadBase(), new Color(1, 1, 1, 0.5f), false, "PadHint"); joyHintA.preserveAspect = true; joyHintB = null;
+            var ringImg = UiKit.Img(touchRoot.transform, UiKit.PadBase(), new Color(1, 1, 1, 0.92f), false, "JoyRing"); ringImg.preserveAspect = true; joyRing = ringImg.rectTransform;
+            var thumbImg = UiKit.Img(joyRing, UiKit.PadThumb(), Color.white, false, "JoyThumb"); thumbImg.preserveAspect = true; joyThumb = thumbImg.rectTransform;
             joyRing.gameObject.SetActive(false);
             Lay(() =>
             {
-                float s = Vh(20);
-                UiKit.Place(joyRing, 0, 0, 0.5f, 0.5f, 0, 0, s, s); UiKit.Place(joyThumb, 0.5f, 0.5f, 0.5f, 0.5f, 0, 0, Vh(9), Vh(9));
-                ringImg.pixelsPerUnitMultiplier = 1f / (px); thumbImg.pixelsPerUnitMultiplier = 1f / px;
+                float s = Mathf.Max(Vh(24), JoyR() * 2.3f);   // 패드 바닥 지름: 스틱이 끝까지 밀려도 바닥판 안에 머무르도록 입력 반경(JoyR)보다 크게
+                // 패드 바닥과 캡: 크기만 맞춘다. 조이스틱을 누르는 중에는 위치(누른 곳, 캡의 밀린 정도)를 건드리지 않는다.
+                // (예전에는 레이아웃이 다시 돌 때마다 바닥을 화면 모서리(0,0)로 되돌려, 패드가 왼쪽 아래 구석에 잘려 보였다)
+                joyRing.anchorMin = joyRing.anchorMax = Vector2.zero; joyRing.pivot = new Vector2(0.5f, 0.5f); joyRing.sizeDelta = new Vector2(s, s);
+                joyThumb.anchorMin = joyThumb.anchorMax = new Vector2(0.5f, 0.5f); joyThumb.pivot = new Vector2(0.5f, 0.5f); joyThumb.sizeDelta = new Vector2(s * 0.42f, s * 0.42f);
+                if (!joyRing.gameObject.activeSelf) { joyRing.anchoredPosition = Vector2.zero; joyThumb.anchoredPosition = Vector2.zero; }
                 float m = Vh(1.5f) + Vh(6) + s / 2;
                 if (!lefty) UiKit.Place(joyHint, 0, 0, 0.5f, 0.5f, m, m, s, s); else UiKit.Place(joyHint, 1, 0, 0.5f, 0.5f, -m, m, s, s);
-                UiKit.Place(joyHintA.rectTransform, 0.5f, 0.5f, 0.5f, 0.5f, 0, 0, px * 2, s * 0.55f);
-                UiKit.Place(joyHintB.rectTransform, 0.5f, 0.5f, 0.5f, 0.5f, 0, 0, s * 0.55f, px * 2);
+                UiKit.Place(joyHintA.rectTransform, 0.5f, 0.5f, 0.5f, 0.5f, 0, 0, s, s);
             });
 
             // 행동 버튼 클러스터
@@ -395,7 +405,7 @@ namespace Abyss
             healImg = MakeBtn(crt, "btn", out var healRt); var healIc = UiKit.Img(healRt, UiKit.Icon("heart"), Color.white, false, "icon"); healBadge = MakeBadge(healRt);
             ventImg = MakeBtn(crt, "btn", out var ventRt); var ventIc = UiKit.Img(ventRt, UiKit.Icon("vent"), Color.white, false, "icon"); ventBadge = MakeBadge(ventRt);
             lampImg = MakeBtn(crt, "btn", out var lampRt); var lampIc = UiKit.Img(lampRt, UiKit.Icon("lamp"), Color.white, false, "icon"); lampBadge = MakeBadge(lampRt);
-#if UNITY_EDITOR
+#if UNITY_EDITOR || UNITY_STANDALONE
             KeyTag(actRt, "Space"); KeyTag(healRt, "F"); KeyTag(ventRt, "E"); KeyTag(lampRt, "Q");
 #endif
             HoldButton(actImg, "act", () => { if (!sim.started) StartGame(); else actHeld = true; }, () => actHeld = false);
@@ -472,7 +482,7 @@ namespace Abyss
             sheetHeader = UiKit.Rect("Header", sheetPanel);
             sheetTitle = T14(sheetHeader, "제작", new Color32(159, 232, 255, 255), TextAnchor.MiddleLeft);
             sheetMeta = T11(sheetHeader, "숫자 = 보유 / 필요", Dim, TextAnchor.MiddleLeft);
-            sheetMsg = T11(sheetHeader, "", Ok, TextAnchor.MiddleLeft);
+            sheetMsg = T11(sheetHeader, "", Ok, TextAnchor.MiddleRight);
             sheetCloseRt = UiKit.Rect("Close", sheetHeader); sheetCloseImg = FrameImg(sheetCloseRt, "btn"); UiKit.Stretch(sheetCloseImg.rectTransform); sheetCloseImg.raycastTarget = true;
             sheetCloseTxt = T14(sheetCloseRt, "닫기", Ink); UiKit.Stretch(sheetCloseTxt.rectTransform);
             var cr = UiKit.Relay(sheetCloseImg); cr.Down = e => sheetCloseImg.sprite = UiKit.Frame("btn_down"); cr.Up = e => sheetCloseImg.sprite = UiKit.Frame("btn"); cr.Click = e => CloseSheet();
@@ -486,7 +496,7 @@ namespace Abyss
             var c = new Card(); c.rt = UiKit.Rect("Card" + i, sheetPanel);
             c.frame = FrameImg(c.rt, "card"); UiKit.Stretch(c.frame.rectTransform); c.frame.raycastTarget = true;
             c.icon = UiKit.Img(c.rt, null, Color.white, false, "icon");
-            c.title = T14(c.rt, "", Ink, TextAnchor.MiddleLeft, "title"); c.effect = T11(c.rt, "", Dim, TextAnchor.MiddleLeft, "effect");
+            c.title = T14(c.rt, "", Ink, TextAnchor.MiddleLeft, "title"); c.effect = T11(c.rt, "", Dim, TextAnchor.MiddleLeft, "effect");   // 이름 아래 한 줄, 왼쪽 정렬
             for (int k = 0; k < 4; k++) { c.chipIcon[k] = UiKit.Img(c.rt, null, Color.white, false, "chipIcon"); c.chipTxt[k] = T11(c.rt, "", Ok, TextAnchor.MiddleLeft, "chipTxt"); }
             var go = UiKit.Rect("Go", c.rt); var goFrame = FrameImg(go, "act"); UiKit.Stretch(goFrame.rectTransform); goFrame.raycastTarget = true;
             var gt = T14(go, "제작", Color.white); UiKit.Stretch(gt.rectTransform); UiKit.Outline(gt, 1);
@@ -501,18 +511,21 @@ namespace Abyss
         void LayoutSheet()
         {
             int rowsN = (Data.Crafts.Length + 1) / 2;       // 카드 2열
-            float pw = Mathf.Min(W * 0.94f, H * 1.85f), pad = px * 4, gap = px * 2, hh = Mathf.Max(48f, Vh(rowsN > 4 ? 9.5f : 11)), ch = Mathf.Max(48f, Vh(rowsN > 4 ? 12.6f : 13));
+            float pw = Mathf.Min(W * 0.94f, H * 1.85f), pad = px * 4, gap = px * 2, hh = Mathf.Max(48f, Vh(rowsN > 4 ? 9.5f : 11));
+            // 카드 높이는 제목 줄 + 재료 줄이 겹치지 않을 최소 높이 이상으로 한다
+            float ch = Mathf.Max(px * 9 + Fs(14) + Fs(11) + 4, Vh(rowsN > 4 ? 12.6f : 13));
             float ph = hh + ch * rowsN + gap * rowsN + pad * 2 + px * 4;
             UiKit.Place(sheetPanel, 0.5f, 0.5f, 0.5f, 0.5f, 0, 0, pw, ph);
+            sheetPanel.localScale = Vector3.one * Mathf.Min(1f, H * 0.97f / ph);   // 화면보다 커지면 통째로 줄여 잘리지 않게
             UiKit.Place(sheetHeader, 0.5f, 1, 0.5f, 1, 0, -(pad + px * 4), pw - pad * 2 - px * 8, hh);
             float hw = pw - pad * 2 - px * 8;
             float cbw = px * 34;
             UiKit.Place(sheetCloseRt, lefty ? 0 : 1, 0.5f, lefty ? 0 : 1, 0.5f, 0, 0, cbw, hh);
             float tx = lefty ? cbw + px * 4 : 0;
             UiKit.Place(sheetTitle.rectTransform, 0, 0.5f, 0, 0.5f, tx, 0, px * 30, hh); sheetTitle.fontSize = Fs(14);
-            UiKit.Place(sheetMeta.rectTransform, 0, 0.5f, 0, 0.5f, tx + px * 30, 0, hw - cbw - px * 36, hh * 0.5f); sheetMeta.fontSize = Fs(11);
-            sheetMeta.rectTransform.anchoredPosition = new Vector2(tx + px * 30, hh * 0.25f);
-            UiKit.Place(sheetMsg.rectTransform, 0, 0.5f, 0, 0.5f, tx + px * 30, -hh * 0.25f, hw - cbw - px * 36, hh * 0.5f); sheetMsg.fontSize = Fs(11);
+            // 머리줄을 한 줄로 정리: [제작]  보유 / 필요 ........ [안내 메시지] [닫기]  (전엔 안내 문구가 제목 위·아래로 떠 있었다)
+            UiKit.Place(sheetMeta.rectTransform, 0, 0.5f, 0, 0.5f, tx + px * 30, 0, hw * 0.4f, hh); sheetMeta.fontSize = Fs(11); sheetMeta.text = "숫자: 보유 / 필요";
+            UiKit.Place(sheetMsg.rectTransform, 1, 0.5f, 1, 0.5f, lefty ? 0 : -(cbw + px * 6), 0, hw * 0.45f, hh); sheetMsg.fontSize = Fs(11);
             sheetCloseTxt.fontSize = Fs(14);
             float cw = (pw - pad * 2 - px * 8 - gap) / 2f;
             for (int i = 0; i < Data.Crafts.Length; i++)
@@ -565,26 +578,56 @@ namespace Abyss
                 bool sel = sheetSel == i && d.upgrade && !maxed;
                 c.frame.sprite = UiKit.Frame(maxed ? "card_max" : sel ? "card_sel" : ok ? "card_can" : "card");
                 if (sheetJust == i && Mathf.FloorToInt(Time.unscaledTime * 8f) % 2 == 0) c.frame.sprite = UiKit.Frame("card_sel");
-                c.icon.sprite = UiKit.Icon(icon); c.icon.color = maxed ? new Color(1, 1, 1, 0.55f) : Color.white;
-                c.title.text = title; c.effect.text = eff;
-                float tx = px * 28, rightLimit = c.rt.sizeDelta.x - (sel && ok ? px * 34 : px * 6);
-                UiKit.Place(c.title.rectTransform, 0, 1, 0, 1, tx, -px * 3, c.title.preferredWidth + 4, Fs(14) + 4);
-                UiKit.Place(c.effect.rectTransform, 0, 1, 0, 1, tx + c.title.preferredWidth + px * 4, -px * 3 - (Fs(14) - Fs(11)) * 0.5f, Mathf.Max(10, rightLimit - (tx + c.title.preferredWidth + px * 4)), Fs(11) + 4);
-                c.title.color = maxed ? Dim : Ink;
-                float x = tx; float cy = -(px * 3 + Fs(14) + px * 4);
+                // 상태가 한눈에 보이게: 제작 가능한 카드만 또렷하고(초록 테두리), 재료가 모자란 카드는 살짝 가라앉는다
+                bool dimCard = !ok && !maxed && !sel;
+                c.frame.color = dimCard ? new Color(0.8f, 0.84f, 0.9f, 1f) : Color.white;
+                float cwid = c.rt.sizeDelta.x, chH = c.rt.sizeDelta.y;
+                // 카드 구성: [아이콘] [이름 / 효과 두 줄(왼쪽)] ........ [재료(오른쪽 정렬)] [제작 버튼]
+                float iconSz = Mathf.Min(chH * 0.6f, px * 20f), padL = px * 8;
+                UiKit.Place(c.icon.rectTransform, 0, 0.5f, 0, 0.5f, padL, 0, iconSz, iconSz);
+                c.icon.sprite = UiKit.Icon(icon); c.icon.color = maxed ? new Color(1, 1, 1, 0.55f) : dimCard ? new Color(1, 1, 1, 0.6f) : Color.white;
+                c.title.text = title; c.effect.text = eff; c.title.color = maxed ? Dim : Ink;
+                float tx = padL + iconSz + px * 5, rightLimit = cwid - (sel && ok ? px * 34 : px * 8), cyc = -chH / 2f;
+                float isz = Mathf.Min(px * 11f, chH * 0.3f);
+                // 재료: 먼저 글자를 채우고 전체 폭을 재서, 카드 폭의 62%를 넘으면 같은 비율로 줄인다
+                float total = 0; int nChips = 0;
                 for (int k = 0; k < 4; k++)
                 {
                     bool has = !maxed && cost != null && k < cost.Length;
-                    c.chipIcon[k].gameObject.SetActive(has || (maxed && k == 0 && false)); c.chipTxt[k].gameObject.SetActive(has || (maxed && k == 0));
-                    if (maxed && k == 0) { c.chipTxt[0].text = "최대 등급"; c.chipTxt[0].color = Ok; UiKit.Place(c.chipTxt[0].rectTransform, 0, 1, 0, 1, tx, cy, px * 60, Fs(11) + 4); continue; }
+                    c.chipIcon[k].gameObject.SetActive(has); c.chipTxt[k].gameObject.SetActive(has || (maxed && k == 0));
+                    if (maxed && k == 0) { c.chipTxt[0].text = "최대 등급"; c.chipTxt[0].color = Ok; c.chipTxt[0].fontSize = Fs(11); UiKit.Place(c.chipTxt[0].rectTransform, 0, 1, 0, 0.5f, rightLimit - px * 52, cyc, px * 52, Fs(11) + 4); continue; }
                     if (!has) continue;
                     int have = sim.inv[(int)cost[k].item], need = cost[k].amount;
                     c.chipIcon[k].sprite = UiKit.Icon(Data.ItemIcon[(int)cost[k].item]);
-                    c.chipTxt[k].text = have + "/" + need; c.chipTxt[k].color = have >= need ? Ok : No;
-                    UiKit.Place(c.chipIcon[k].rectTransform, 0, 1, 0, 1, x, cy - px * 0.5f, px * 12, px * 12);
-                    UiKit.Place(c.chipTxt[k].rectTransform, 0, 1, 0, 1, x + px * 13, cy, c.chipTxt[k].preferredWidth + 4, Fs(11) + 4);
-                    x += px * 13 + c.chipTxt[k].preferredWidth + px * 5;
+                    // 모자라면 '!'를 붙여 색을 구분하지 못해도 알 수 있다 (주석을 윗줄로 올려, 아래 문장이 주석에 먹히지 않게 한다)
+                    c.chipTxt[k].text = have + "/" + need + (have >= need ? "" : "!"); c.chipTxt[k].color = have >= need ? Ok : No; c.chipTxt[k].fontSize = Fs(11);
+                    total += isz + px * 2 + c.chipTxt[k].preferredWidth + px * 6; nChips++;
                 }
+                float maxChips = (rightLimit - tx) * 0.62f, cs = total > maxChips && total > 0 ? Mathf.Max(0.55f, maxChips / total) : 1f, isz2 = isz * cs;
+                float chipsW = 0;
+                for (int k = 0; k < 4 && nChips > 0; k++)
+                {
+                    if (maxed || cost == null || k >= cost.Length) continue;
+                    if (cs < 1f) c.chipTxt[k].fontSize = Mathf.Max(8, Mathf.FloorToInt(Fs(11) * cs));
+                    chipsW += isz2 + px * 2 * cs + c.chipTxt[k].preferredWidth + px * 6 * cs;
+                }
+                float x = rightLimit - (chipsW > 0 ? chipsW - px * 6 * cs : 0f);   // 오른쪽 끝에 맞춰 정렬 (마지막 간격은 뺀다)
+                for (int k = 0; k < 4 && nChips > 0; k++)
+                {
+                    if (maxed || cost == null || k >= cost.Length) continue;
+                    UiKit.Place(c.chipIcon[k].rectTransform, 0, 1, 0, 0.5f, x, cyc, isz2, isz2);
+                    UiKit.Place(c.chipTxt[k].rectTransform, 0, 1, 0, 0.5f, x + isz2 + px * 2 * cs, cyc, c.chipTxt[k].preferredWidth + 4, Fs(11) + 4);
+                    x += isz2 + px * 2 * cs + c.chipTxt[k].preferredWidth + px * 6 * cs;
+                }
+                // 이름과 효과: 재료 영역 왼쪽의 남은 폭에 맞춘다 (길면 글자를 줄인다 → 겹치지 않는다)
+                float textRight = (chipsW > 0 ? rightLimit - chipsW + px * 6 * cs : rightLimit - px * 52) - px * 8;
+                float availT = Mathf.Max(px * 20, textRight - tx);
+                c.title.fontSize = Fs(14); c.effect.fontSize = Fs(11);
+                if (c.title.preferredWidth + 4 > availT) c.title.fontSize = Mathf.Max(10, Mathf.FloorToInt(Fs(14) * availT / (c.title.preferredWidth + 4)));
+                if (c.effect.preferredWidth + 4 > availT) c.effect.fontSize = Mathf.Max(8, Mathf.FloorToInt(Fs(11) * availT / (c.effect.preferredWidth + 4)));
+                float block = Fs(14) + Fs(11) + px * 2, top = Mathf.Max(px * 2, (chH - block) / 2f);
+                UiKit.Place(c.title.rectTransform, 0, 1, 0, 1, tx, -top, availT, Fs(14) + 4);
+                UiKit.Place(c.effect.rectTransform, 0, 1, 0, 1, tx, -(top + Fs(14) + px * 2), availT, Fs(11) + 4);
                 c.go.gameObject.SetActive(sel && ok);
             }
             if (sheetJust >= 0 && Time.unscaledTime - sheetJustAt > 0.4f) sheetJust = -1;     // 제작 직후 카드 깜빡임은 0.4초만
@@ -598,7 +641,9 @@ namespace Abyss
             if (d.upgrade && nx == null) return;                       // 최대 등급
             if (!d.upgrade) { sheetJust = i; sheetJustAt = Time.unscaledTime; sim.TryCraft(i); RefreshSheet(); return; }   // 소모품은 한 번에
             if (sheetSel != i) { sheetSel = i; RefreshSheet(); return; }
-            if (!sim.CanAfford(nx.cost)) OnToast("재료가 부족하다", 1.4f, false);
+            // 선택한 카드를 한 번 더 누르면 제작 (제작 버튼까지 손을 옮기지 않아도 된다). 첫 터치는 선택만 하므로 실수로 비싼 재료가 나가지 않는다.
+            if (sim.CanAfford(nx.cost)) OnCardGo(i);
+            else OnToast("재료가 부족하다", 1.4f, false);
         }
 
         void OnCardGo(int i)
@@ -625,24 +670,51 @@ namespace Abyss
             var title = T14(menuPanel, "일시정지", new Color32(159, 232, 255, 255), TextAnchor.MiddleLeft, "title"); menuTxts.Add(title);
             Text t;
             menuBtns.Add(MenuButton(menuPanel, "계속하기", CloseMenu, out t)); menuTxts.Add(t);
-#if UNITY_EDITOR
+#if UNITY_EDITOR || UNITY_STANDALONE
             KeyTag(menuBtns[menuBtns.Count - 1].transform, "Esc");
 #endif
             menuBtns.Add(MenuButton(menuPanel, "이야기 기록", OpenLog, out t)); menuTxts.Add(t);
             menuBtns.Add(MenuButton(menuPanel, "조작법 보기", () => { helpOpen = true; helpGo.SetActive(true); }, out t)); menuTxts.Add(t);
-            menuBtns.Add(MenuButton(menuPanel, "소리: 켜짐", () => { sfx.Muted = !sfx.Muted; RefreshMenu(); }, out menuSoundTxt)); menuTxts.Add(menuSoundTxt);
-#if UNITY_EDITOR
-            KeyTag(menuBtns[menuBtns.Count - 1].transform, "M");
+            menuBtns.Add(MenuButton(menuPanel, "효과음: 켜짐", () => { sfx.SfxMuted = !sfx.SfxMuted; RefreshMenu(); }, out menuSoundTxt)); menuTxts.Add(menuSoundTxt);
+            menuBtns.Add(MenuButton(menuPanel, "음악: 켜짐", () => { sfx.MusicMuted = !sfx.MusicMuted; RefreshMenu(); }, out menuMusicTxt)); menuTxts.Add(menuMusicTxt);
+#if UNITY_EDITOR || UNITY_STANDALONE
+            KeyTag(menuBtns[menuBtns.Count - 1].transform, "M");   // M 키는 효과음·음악을 한꺼번에 끄고 켠다
 #endif
             menuBtns.Add(MenuButton(menuPanel, "전체화면", () => { Screen.fullScreen = !Screen.fullScreen; }, out t)); menuTxts.Add(t);
             menuBtns.Add(MenuButton(menuPanel, "왼손 모드: 꺼짐", ToggleLefty, out menuLeftyTxt)); menuTxts.Add(menuLeftyTxt);
+            // 접근성: 어두운 구역이 힘들면 밝기를 올리고, 흔들림·번쩍임에 민감하면 화면 효과를 줄인다
+            menuBtns.Add(MenuButton(menuPanel, "밝기: 보통", () => { GameSettings.BrightLevel = (GameSettings.BrightLevel + 1) % 3; RefreshMenu(); }, out menuBrightTxt)); menuTxts.Add(menuBrightTxt);
+            menuBtns.Add(MenuButton(menuPanel, "화면 효과 줄이기: 꺼짐", () => { GameSettings.ReduceFx = !GameSettings.ReduceFx; RefreshMenu(); }, out menuFxTxt)); menuTxts.Add(menuFxTxt);
             menuBtns.Add(MenuButton(menuPanel, "새 게임", OnNewGameTap, out menuNewTxt)); menuTxts.Add(menuNewTxt);
+            // 저장하고 타이틀로 돌아가기 / PC 에서는 게임 종료 (모바일·웹은 OS 가 앱을 끝내므로 종료 버튼을 두지 않는다)
+            menuBtns.Add(MenuButton(menuPanel, "타이틀로", () => { sim.RequestSave(); UnityEngine.SceneManagement.SceneManager.LoadScene(UnityEngine.SceneManagement.SceneManager.GetActiveScene().name); }, out t)); menuTxts.Add(t);
+            if (!Application.isMobilePlatform && Application.platform != RuntimePlatform.WebGLPlayer)
+            {
+                menuBtns.Add(MenuButton(menuPanel, "게임 종료", () =>
+                {
+                    sim.RequestSave();
+#if UNITY_EDITOR
+                    UnityEditor.EditorApplication.isPlaying = false;
+#else
+                    Application.Quit();
+#endif
+                }, out t)); menuTxts.Add(t);
+            }
             Lay(() =>
             {
-                float bh = Mathf.Max(38f, Vh(9.4f)), gap = px * 1.6f, pad = px * 5, pw = Mathf.Min(W * 0.7f, H * 1.0f + 200), th = Fs(14) + px * 4;
-                UiKit.Place(menuPanel, 0.5f, 0.5f, 0.5f, 0.5f, 0, 0, pw, pad * 2 + px * 4 + th + gap + menuBtns.Count * (bh + gap));
+                // 버튼이 7개를 넘으면 2열로 놓아 화면 높이를 넘지 않게 한다
+                int cols = menuBtns.Count > 7 ? 2 : 1, rows = (menuBtns.Count + cols - 1) / cols;
+                float bh = Mathf.Max(38f, Vh(cols == 2 ? 11f : 9.4f)), gap = px * 1.6f, pad = px * 5, th = Fs(14) + px * 4;
+                float pw = cols == 2 ? Mathf.Min(W * 0.9f, H * 1.7f) : Mathf.Min(W * 0.7f, H * 1.0f + 200);
+                float bw = (pw - pad * 2 - px * 8 - (cols - 1) * gap) / cols;
+                UiKit.Place(menuPanel, 0.5f, 0.5f, 0.5f, 0.5f, 0, 0, pw, pad * 2 + px * 4 + th + gap + rows * (bh + gap));
+                menuPanel.localScale = Vector3.one * Mathf.Min(1f, H * 0.97f / (pad * 2 + px * 4 + th + gap + rows * (bh + gap)));
                 UiKit.Place(title.rectTransform, 0, 1, 0, 1, pad + px * 4, -(pad + px * 2), pw - pad * 2, th);
-                for (int i = 0; i < menuBtns.Count; i++) UiKit.Place(menuBtns[i].transform.parent.GetComponent<RectTransform>(), 0.5f, 1, 0.5f, 1, 0, -(pad + px * 4 + th + gap + i * (bh + gap)), pw - pad * 2 - px * 8, bh);
+                for (int i = 0; i < menuBtns.Count; i++)
+                {
+                    int col = i % cols, row = i / cols;
+                    UiKit.Place(menuBtns[i].transform.parent.GetComponent<RectTransform>(), 0, 1, 0, 1, pad + px * 4 + col * (bw + gap), -(pad + px * 4 + th + gap + row * (bh + gap)), bw, bh);
+                }
                 foreach (var tx in menuTxts) tx.fontSize = Fs(14);
             });
             menuGo.SetActive(false);
@@ -701,6 +773,7 @@ namespace Abyss
             {
                 ics.Add(UiKit.Img(panel, UiKit.Icon(r[0]), Color.white, false, "icon")); t1.Add(T14(panel, r[1], Ink, TextAnchor.MiddleLeft)); t2.Add(T11(panel, r[2], Dim, TextAnchor.MiddleLeft));
             }
+            helpT1 = t1; helpT2 = t2;
             var closeRt = UiKit.Rect("Close", panel); var ci = FrameImg(closeRt, "btn"); UiKit.Stretch(ci.rectTransform); ci.raycastTarget = true;
             var ct = T14(closeRt, "닫기", Ink); UiKit.Stretch(ct.rectTransform);
             var rl = UiKit.Relay(ci); rl.Down = e => ci.sprite = UiKit.Frame("btn_down"); rl.Up = e => ci.sprite = UiKit.Frame("btn"); rl.Click = e => { helpOpen = false; helpGo.SetActive(false); };
@@ -750,13 +823,15 @@ namespace Abyss
         RectTransform startWorld; CanvasGroup startCg; TitleScene titleScene = new TitleScene(); float startAt = -1f;
         void BuildStart()
         {
-            startGo = Overlay("Start", 1f); startCg = startGo.AddComponent<CanvasGroup>();
+            startGo = Overlay("Start", 1f);   // 바탕(검정)은 처음부터 완전 불투명: 페이드인 중에 뒤의 게임 화면이 비치지 않게 한다
             // 배경 장면(레이어·동물·빛)은 한 컨테이너에 두고 같이 천천히 확대/이동시킨다 (여백을 둬서 가장자리가 보이지 않게)
             startWorld = UiKit.Rect("World", startGo.transform); UiKit.Stretch(startWorld, -40, -40, -40, -40);
+            startCg = startWorld.gameObject.AddComponent<CanvasGroup>(); startCg.alpha = 0f;   // 페이드인은 장면에만 적용한다
             titleScene.Build(startWorld);
             startSub = T14(startGo.transform, "숨이 다하기 전에, 빛을 되살려라", Ink); UiKit.Outline(startSub, 2);
             startPrompt = T14(startGo.transform, "화면을 터치(클릭)해서 시작", Gold); UiKit.Outline(startPrompt, 2);
             startInfoTxt = T11(startGo.transform, "", Dim); UiKit.Outline(startInfoTxt, 1);
+            { var z = startSub.color; z.a = 0; startSub.color = z; z = startPrompt.color; z.a = 0; startPrompt.color = z; z = startInfoTxt.color; z.a = 0; startInfoTxt.color = z; }   // 첫 프레임에 글자만 먼저 보이지 않게
             UiKit.Relay(startGo.GetComponentInChildren<Image>()).Down = e => StartGame();
             Lay(() =>
             {
@@ -785,6 +860,7 @@ namespace Abyss
             var c1 = startSub.color; c1.a = k1; startSub.color = c1;
             UiKit.Place(startPrompt.rectTransform, 0.5f, 0f, 0.5f, 0f, 0, H * 0.11f - (1 - k2) * Fs(14) * 1.5f, W, Fs(14) + 8);
             var pc = startPrompt.color; pc.a = k2 * (0.55f + 0.45f * Mathf.Sin(Time.unscaledTime * 3f)); startPrompt.color = pc;
+            var ic = startInfoTxt.color; ic.a = k2; startInfoTxt.color = ic;
         }
 
         void RefreshStartText()
@@ -793,13 +869,21 @@ namespace Abyss
             startPrompt.text = SaveLoaded ? "화면을 터치(클릭)해서 이어하기" : "화면을 터치(클릭)해서 시작";
 #if UNITY_EDITOR
             // 키보드 단축키 안내는 에디터에서만 보인다 (빌드에는 표시하지 않음)
-            startInfoTxt.text = TouchMode ? "" : (SaveLoaded ? "N 키: 새 게임   ·   I 키: 인트로 다시 보기" : "I 키: 인트로 다시 보기");
+            startInfoTxt.text = SaveLoaded ? "N 키: 새 게임   ·   I 키: 인트로 다시 보기" : "I 키: 인트로 다시 보기";
 #else
             startInfoTxt.text = "";
 #endif
         }
 
         public void BeginPlay() { skipIntro = true; StartGame(); }
+
+        float lastSavedToastAt = -999f;
+        /// <summary>저장이 되면 작은 "저장됨" 안내를 한 번 띄운다 (10초 자동 저장마다 반복하지 않도록 45초에 한 번만).</summary>
+        public void NotifySaved()
+        {
+            if (!sim.started || Time.unscaledTime - lastSavedToastAt < 45f) return;
+            lastSavedToastAt = Time.unscaledTime; OnToast("저장됨", 1.0f, true);
+        }
 
         bool skipIntro, introPlaying;
         void StartGame()
@@ -815,8 +899,19 @@ namespace Abyss
                 return;
             }
             sim.started = true; startGo.SetActive(false);
-            OnToast(TouchMode ? "왼쪽 화면을 끌어서 이동하세요" : "지도의 주황 점(광맥)에서 고철을 캐보자", 4f, false);
+            // 첫 안내: 모바일은 터치, PC 는 키보드·마우스 방법을 먼저 알려 준다 (도움말을 열지 않아도 처음 5초 안에 조작을 알 수 있게)
+            OnToast(Application.isMobilePlatform ? "왼쪽 화면을 끌어서 이동하세요" : "WASD로 이동 · 큰 버튼/Space 채굴·공격 · 지도의 주황 점이 광맥", 5f, false);
         }
+
+        // ---------- 창을 벗어나거나 앱이 백그라운드로 가면 자동 일시정지 (산소가 줄고 적에게 맞는 일을 막는다) ----------
+        void AutoPause()
+        {
+            if (sim != null && sim.started && !menuOpen && !introPlaying) OpenMenu();
+        }
+#if !UNITY_EDITOR
+        void OnApplicationFocus(bool focus) { if (!focus) AutoPause(); }   // 에디터는 인스펙터 클릭만으로 멈추면 불편해서 제외
+#endif
+        void OnApplicationPause(bool paused) { if (paused) AutoPause(); }
 
         // ---------- 메뉴/시트 열기 닫기 ----------
         void SyncPause()
@@ -831,7 +926,10 @@ namespace Abyss
 
         void RefreshMenu()
         {
-            menuSoundTxt.text = "소리: " + (sfx.Muted ? "꺼짐" : "켜짐");
+            menuSoundTxt.text = "효과음: " + (sfx.SfxMuted ? "꺼짐" : "켜짐");
+            menuMusicTxt.text = "음악: " + (sfx.MusicMuted ? "꺼짐" : "켜짐");
+            menuBrightTxt.text = "밝기: " + GameSettings.BrightLabel;
+            menuFxTxt.text = "화면 효과 줄이기: " + (GameSettings.ReduceFx ? "켜짐" : "꺼짐");
             menuLeftyTxt.text = "왼손 모드: " + (lefty ? "켜짐" : "꺼짐");
             menuNewTxt.text = newArmed ? "정말 삭제하고 새로 시작? (한 번 더)" : "새 게임";
         }
@@ -851,10 +949,29 @@ namespace Abyss
         void SetTouchMode(bool on)
         {
             TouchMode = on;
-            touchRoot.SetActive(on); cluster.SetActive(on); craftPanel.SetActive(!on);
+            // 행동 버튼(채굴·램프·환기구·젤)은 터치 모드에서 보이고, 유니티 에디터에서는 키보드 모드에서도 단축키 표시와 함께 보인다
+            touchRoot.SetActive(on); cluster.SetActive(on || Application.isEditor); craftPanel.SetActive(!on);
             if (!on) craftPillRt.gameObject.SetActive(false);
             joyHint.gameObject.SetActive(on);
-            RefreshStartText();
+            RefreshStartText(); RefreshHelpText();
+        }
+
+        List<Text> helpT1, helpT2;
+        void RefreshHelpText()
+        {
+            if (helpT1 == null) return;
+            var a = TouchMode
+                ? new[] { "왼쪽 화면을 끌어서 이동", "오른쪽 아래 큰 버튼을 꾹 누르기", "화면을 직접 터치", "비콘 근처에서 제작 버튼" }
+                : new[] { "WASD / 방향키로 이동", "우클릭 · Space 로 작살 공격 (오른쪽 아래 큰 버튼도 같다)", "좌클릭(꾹) 으로 채굴 · 상자 · 조개", "비콘 근처에서 1~0 키로 제작" };
+            var b = TouchMode
+                ? new[] { "처음 누른 곳에 조이스틱이 생긴다", "적이 가까우면 자동 공격, 아니면 앞쪽 채굴·상자·조개", "누른 타일을 정밀하게 채굴 (램프·환기구 회수도 여기서)", "산소는 비콘·환기구 근처에서만 충전된다" }
+                : new[] { "수영하는 방향으로 몸이 돌아간다", "Q 램프 · E 환기구 · F 젤 회복 (각 버튼에 키가 표시된다)", "누른 타일을 정밀하게 채굴", "M 소리 · Esc 메뉴 · 산소는 비콘·환기구 근처에서만 충전된다" };
+            if (TouchMode && !Application.isMobilePlatform)   // PC 에서는 같은 동작을 키보드·마우스로도 할 수 있다고 덧붙인다
+            {
+                b[0] += "  ·  PC: WASD / 방향키"; b[1] += "  ·  PC: Space 또는 우클릭(커서 방향)"; b[2] += "  ·  PC: 마우스 클릭";
+                b[3] += "  ·  PC: 1~0 키 · Q 램프 · E 환기구 · F 젤";
+            }
+            for (int i = 0; i < helpT1.Count && i < a.Length; i++) { helpT1[i].text = a[i]; helpT2[i].text = b[i]; }
         }
 
         // =========================================================
@@ -865,7 +982,15 @@ namespace Abyss
 
         void HotKeys()
         {
-            if (KeyDown(KeyCode.Escape) && sim.started) { if (menuOpen) CloseMenu(); else OpenMenu(); }
+            // Esc: 가장 위에 열린 창부터 하나씩 닫는다 (도움말/기록 → 메뉴 → 제작창 → 아무것도 없으면 메뉴 열기)
+            if ((KeyDown(KeyCode.Escape) || KeyDown(KeyCode.JoystickButton7)) && sim.started)
+            {
+                if (helpOpen) { helpOpen = false; helpGo.SetActive(false); }
+                else if (logOpen) { logOpen = false; logGo.SetActive(false); }
+                else if (menuOpen) CloseMenu();
+                else if (sheetOpen) CloseSheet();
+                else OpenMenu();
+            }
             if (KeyDown(KeyCode.M)) { sfx.Muted = !sfx.Muted; OnToast(sfx.Muted ? "소리 끔" : "소리 켬", 1f, false); }
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             if (KeyDown(KeyCode.T)) { ForceTouch = !TouchMode; SetTouchMode(!TouchMode); }
@@ -884,8 +1009,37 @@ namespace Abyss
             UpdateScale(false);
             HotKeys();
             if (Paused || !sim.started) { if (Input.GetMouseButtonDown(0) && !sim.started && !TouchMode) { /* 시작 오버레이 클릭은 Relay 가 처리 */ } return default(SimInput); }
-            return TouchMode ? TouchInput() : DesktopInput();
+            if (!TouchMode) return DesktopInput();
+#if UNITY_EDITOR || UNITY_STANDALONE
+            // 에디터의 모바일 UI 모드에서도 키보드가 같이 동작한다: WASD/방향키 이동, Space 작살·채굴, Q/E/F 램프·환기구·젤
+            float kx = (Key(KeyCode.D) || Key(KeyCode.RightArrow) ? 1 : 0) - (Key(KeyCode.A) || Key(KeyCode.LeftArrow) ? 1 : 0);
+            float ky = (Key(KeyCode.S) || Key(KeyCode.DownArrow) ? 1 : 0) - (Key(KeyCode.W) || Key(KeyCode.UpArrow) ? 1 : 0);
+            var kmove = new Vector2(kx, ky); if (kmove.sqrMagnitude > 1) kmove.Normalize();
+            // 게임패드: 왼쪽 스틱 이동(아날로그), A 채굴·공격, X 램프, B 환기구, Y 젤 회복, Start 메뉴. 키보드를 누르지 않을 때만 스틱을 쓴다.
+            Vector2 stick = new Vector2(Input.GetAxisRaw("Horizontal"), -Input.GetAxisRaw("Vertical"));   // Raw: 키를 떼면 바로 0 (GetAxis 는 키 입력도 부드럽게 줄여서 뗀 뒤에도 미끄러진다)
+            if (kmove.sqrMagnitude < 0.01f && stick.sqrMagnitude > 0.09f) kmove = stick.sqrMagnitude > 1f ? stick.normalized : stick;
+            if (kmove.sqrMagnitude > 0.01f) face = kmove.normalized;
+            kbAct = Key(KeyCode.Space) || Key(KeyCode.JoystickButton0);
+            if (KeyDown(KeyCode.Q) || KeyDown(KeyCode.JoystickButton2)) pressLamp = true;
+            if (KeyDown(KeyCode.E) || KeyDown(KeyCode.JoystickButton1)) pressVent = true;
+            if (KeyDown(KeyCode.F) || KeyDown(KeyCode.JoystickButton3)) pressHeal = true;
+            for (int ci = 0; ci < Mathf.Min(9, Data.Crafts.Length); ci++) if (KeyDown(KeyCode.Alpha1 + ci)) sim.TryCraft(ci);   // 비콘 근처에서 1~0 키 제작
+            if (Data.Crafts.Length >= 10 && KeyDown(KeyCode.Alpha0)) sim.TryCraft(9);
+            var ti = TouchInput();
+            if (kmove.sqrMagnitude > 0.01f) { ti.move = kmove; ti.faceDir = face; }
+            // PC: 마우스 우클릭은 커서 쪽으로 작살 공격 (버튼 위를 누를 때는 제외)
+            if (Input.GetMouseButton(1) && !(EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()))
+            {
+                Vector2 aimPx = view.ScreenToWorldPx(Input.mousePosition); Vector2 toAim = aimPx - new Vector2(sim.P.x, sim.P.y);
+                ti.attack = true; ti.mine = false; ti.aim = aimPx;
+                if (toAim.sqrMagnitude > 0.0001f) { face = toAim.normalized; ti.faceDir = face; }
+            }
+            return ti;
+#else
+            return TouchInput();
+#endif
         }
+        bool kbAct;
 
         SimInput DesktopInput()
         {
@@ -912,6 +1066,8 @@ namespace Abyss
         SimInput TouchInput()
         {
             var P = sim.P; var inp = new SimInput { touch = true };
+            // 손가락/마우스가 이미 떼어졌는데 조이스틱이 눌린 채로 남아 있으면(창 밖에서 뗐을 때 등) 풀어 준다 — 패드가 화면에 박혀 있지 않도록
+            if (joyId != None && !Input.GetMouseButton(0) && Input.touchCount == 0) JoyEnd();
             if (joyId != None)
             {
                 Vector2 d = joyPos - joyOrigin; float len = Mathf.Max(d.magnitude, 0.0001f), mag = Mathf.Min(1f, len / JoyR());
@@ -930,7 +1086,7 @@ namespace Abyss
 
             Vector2 aim = new Vector2(P.x + face.x * World.TS * 1.2f, P.y + face.y * World.TS * 1.2f);
             if (tapId != None) { aim = view.ScreenToWorldPx(tapPos); inp.mine = true; }
-            else if (actHeld)
+            else if (actHeld || kbAct)
             {
                 if (nearEnemy)
                 {
@@ -974,7 +1130,8 @@ namespace Abyss
             if (hudT <= 0) { hudT = 0.15f; RefreshChips(); RefreshAll(); }
 
             // 피격/저산소 화면 효과
-            float hurt = sim.P.invuln > 0.6f ? 0.18f : 0f; hurtFlash.color = new Color(1, 0.16f, 0.16f, hurt);
+            // 붉은 번쩍임은 피해를 입은 직후 0.3초만 (이전에는 무적 시간 동안 켜져서, 사망 후 재시작·불러오기 때 화면이 몇 초간 붉게 보였다)
+            float since = sim.time - sim.hurtAt; float hurt = sim.started && since >= 0f && since < 0.3f ? 0.18f * GameSettings.FxScale * (1f - since / 0.3f) : 0f; hurtFlash.color = new Color(1, 0.16f, 0.16f, hurt);
             bool inBeacon = Mathf.Sqrt((sim.P.x - World.BX) * (sim.P.x - World.BX) + (sim.P.y - World.BY) * (sim.P.y - World.BY)) < sim.BeaconR;
             lowO2Flash.color = (sim.P.o2 < 10 && !inBeacon && sim.started) ? new Color(0, 0.12f, 0.24f, 0.25f + Mathf.Sin(Time.unscaledTime * 8) * 0.1f) : new Color(0, 0.12f, 0.24f, 0);
 
@@ -996,7 +1153,8 @@ namespace Abyss
             bool blink = Mathf.FloorToInt(Time.unscaledTime * 4) % 2 == 0;
             Color ringOk = new Color32(46, 70, 104, 255), ringLow = new Color32(255, 107, 107, 255);
             hpRing.color = lowHp && blink ? ringLow : ringOk; o2Ring.color = lowO2 && blink ? ringLow : ringOk;
-            o2Fill.GetComponent<Image>().color = lowO2 ? new Color32(255, 107, 107, 255) : new Color32(58, 167, 232, 255);
+            // 저산소일 때 산소 막대가 붉은빛으로 맥박처럼 깜박인다 (한눈에 위급함이 보이게)
+            o2Fill.GetComponent<Image>().color = lowO2 ? Color.Lerp(new Color32(255, 96, 96, 255), new Color32(255, 214, 170, 255), 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 8f)) : new Color32(58, 167, 232, 255);
             var mini = sim.boss.active ? null : sim.ActiveMini;                     // 심연의 눈이 우선, 아니면 가까운 미니보스
             bossRt.gameObject.SetActive(sim.boss.active || mini != null);
             if (sim.boss.active) { bossLabel.text = "심연의 눈"; bossFill.anchorMax = new Vector2(Mathf.Clamp01(sim.boss.hp / Data.BossHp), 1); bossFill.offsetMax = new Vector2(-2, -2); }
@@ -1019,7 +1177,8 @@ namespace Abyss
             if (Mathf.Abs(miniRt.sizeDelta.x - ms) > 0.5f) foreach (var a in layouts) a();
 
             // 터치 버튼 상태
-            healBadge.text = "x" + (sim.inv[(int)Item.Gel] / 2) + (sim.inv[(int)Item.Potion] > 0 ? "·P" + sim.inv[(int)Item.Potion] : "");   // 젤 회복 횟수 · 산소 포션 수 ventBadge.text = sim.inv[(int)Item.Vent].ToString(); lampBadge.text = sim.inv[(int)Item.Lamp].ToString();
+            healBadge.text = "x" + (sim.inv[(int)Item.Gel] / 2) + (sim.inv[(int)Item.Potion] > 0 ? "·P" + sim.inv[(int)Item.Potion] : "");   // 젤 회복 횟수 · 산소 포션 수
+            ventBadge.text = sim.inv[(int)Item.Vent].ToString(); lampBadge.text = sim.inv[(int)Item.Lamp].ToString();
             foreach (var b in new[] { healBadge, ventBadge, lampBadge }) LayoutBadge(b);
             SetDim(lampImg, sim.inv[(int)Item.Lamp] <= 0); SetDim(ventImg, sim.inv[(int)Item.Vent] <= 0); SetDim(healImg, sim.inv[(int)Item.Gel] < 2 || sim.P.hp >= sim.MaxHp);
 
@@ -1068,14 +1227,48 @@ namespace Abyss
         {
             float size = miniRt.rect.width - px * 6; if (size <= 0) return;
             float cell = size / World.W, dot = Mathf.Max(3f, cell * 3f), off = px * 3;
-            Action<Image, float, float, bool> put = (im, wx, wy, show) =>
+            // 점 하나를 지도 좌표에 놓는다: putS 는 크기 배율을 받고, put 은 그것에 표시 여부를 더한 것 (좌표 계산을 한 곳에만 둔다)
+            Action<Image, float, float, float> putS = (im, wx, wy, sc) =>
+                UiKit.Place(im.rectTransform, 0, 0, 0.5f, 0.5f, off + (wx / World.TS + 0.5f) * cell, off + (World.H - (wy / World.TS + 0.5f)) * cell, dot * sc, dot * sc);
+            Action<Image, float, float, bool> put = (im, wx, wy, show) => { im.gameObject.SetActive(show); putS(im, wx, wy, 1f); };
+            putS(dotBeacon, World.BX, World.BY, (1.1f + 0.35f * Mathf.Sin(Time.unscaledTime * 3f)) * 1.3f);   // 비콘 점: 크고 숨 쉬듯 맥동해서 지도에서 바로 보인다
+            dotBeacon.color = new Color32(160, 238, 255, 255);
+            // 지금 목표(광맥·해파리·상자·소굴): 금색 점이 맥동한다. 비콘이 목표인 제작 단계와 후반(스스로 찾기)에는 표시하지 않는다.
+            float ggx = 0, ggy = 0; bool goalOn = sim.started && sim.GoalTarget(out ggx, out ggy);
+            goalOn = goalOn && !(Mathf.Abs(ggx - World.BX) < 1f && Mathf.Abs(ggy - World.BY) < 1f);
+            if (goalOn)
             {
-                im.gameObject.SetActive(show);
-                UiKit.Place(im.rectTransform, 0, 0, 0.5f, 0.5f, off + (wx / World.TS + 0.5f) * cell, off + (World.H - (wy / World.TS + 0.5f)) * cell, dot, dot);
-            };
-            put(dotBeacon, World.BX, World.BY, true);
+                dotGoal.gameObject.SetActive(true);
+                putS(dotGoal, ggx, ggy, 1.3f + 0.5f * Mathf.Sin(Time.unscaledTime * 4f));
+                var gc = dotGoal.color; gc.a = 0.6f + 0.4f * Mathf.Abs(Mathf.Sin(Time.unscaledTime * 4f)); dotGoal.color = gc;
+            }
+            else dotGoal.gameObject.SetActive(false);
+
             put(dotPlayer, sim.P.x, sim.P.y, true);
             dotPlayer.color = Mathf.FloorToInt(Time.unscaledTime * 3) % 2 == 1 ? Color.white : new Color32(255, 80, 80, 255);
+            // 비콘 방향 화살표: 비콘에서 어느 정도 멀어지면 플레이어 점 둘레에 작은 화살표가 나타나 비콘 쪽을 가리킨다 (가까우면 숨김)
+            {
+                float bdx = World.BX - sim.P.x, bdy = World.BY - sim.P.y, bd = Mathf.Sqrt(bdx * bdx + bdy * bdy);
+                bool far = sim.started && bd > 90f;
+                dotBeaconArrow.gameObject.SetActive(far);
+                if (far)
+                {
+                    Vector2 bm = new Vector2(bdx / bd, -bdy / bd); float bs = dot * 1.7f, orbit = dot * 3.4f;
+                    UiKit.Place(dotBeaconArrow.rectTransform, 0, 0, 0.5f, 0.5f, off + (sim.P.x / World.TS + 0.5f) * cell + bm.x * orbit, off + (World.H - (sim.P.y / World.TS + 0.5f)) * cell + bm.y * orbit, bs, bs);
+                    dotBeaconArrow.rectTransform.localEulerAngles = new Vector3(0, 0, Mathf.Atan2(bm.y, bm.x) * Mathf.Rad2Deg - 90f);
+                    var bc = dotBeaconArrow.color; bc.a = 0.65f + 0.35f * Mathf.Abs(Mathf.Sin(Time.unscaledTime * 3f)); dotBeaconArrow.color = bc;
+                }
+            }
+            // 내가 향하는 방향 화살표: 움직이는 중이면 이동 방향, 멈춰 있으면 바라보는 방향 (월드 y 는 아래로 증가 → 지도에서는 뒤집는다)
+            {
+                Vector2 dir = Mathf.Abs(sim.P.vx) + Mathf.Abs(sim.P.vy) > 4f ? new Vector2(sim.P.vx, sim.P.vy) : face;
+                if (dir.sqrMagnitude < 0.0001f) dir = new Vector2(1, 0);
+                dir.Normalize(); Vector2 md = new Vector2(dir.x, -dir.y);
+                float ps = dot * 1.9f;
+                UiKit.Place(dotArrow.rectTransform, 0, 0, 0.5f, 0.5f, off + (sim.P.x / World.TS + 0.5f) * cell + md.x * ps * 0.9f, off + (World.H - (sim.P.y / World.TS + 0.5f)) * cell + md.y * ps * 0.9f, ps, ps);
+                dotArrow.rectTransform.localEulerAngles = new Vector3(0, 0, Mathf.Atan2(md.y, md.x) * Mathf.Rad2Deg - 90f);
+                dotArrow.gameObject.SetActive(true);
+            }
             put(dotBoss, World.AX, World.AY, !sim.boss.dead);
             for (int i = 0; i < World.StarterVeins.Length; i++)
                 put(dotGuide[i], World.StarterVeins[i][0] * World.TS + 8, World.StarterVeins[i][1] * World.TS + 8, sim.ShowEarlyGuide);
@@ -1091,6 +1284,30 @@ namespace Abyss
                 bool seen = sim.world.explored[World.Idx(rc[0], rc[1])] != 0 || sim.world.explored[World.Idx(rc[0], rc[1] - 3)] != 0;   // 방 가까이 가 봤으면 표시
                 bool opened = sim.world.Get(rc[0], rc[1]) != Tile.Chest;
                 put(dotRuins[i], rc[0] * World.TS + 8, rc[1] * World.TS + 8, seen && !opened);   // 상자를 열면 사라진다
+            }
+
+            // 설치한 램프(노랑)와 환기구(청록)를 작은 점으로: 0.4초마다 타일을 훑어 목록을 갱신하고, 가본 곳의 것만 보인다 (비콘 바로 곁 기본 램프는 제외)
+            if (Time.unscaledTime - placedScanAt > 0.4f)
+            {
+                placedScanAt = Time.unscaledTime; placedList.Clear();
+                var wd = sim.world; int bx = (int)(World.BX / World.TS), by = (int)(World.BY / World.TS);
+                for (int y = 0; y < World.H && placedList.Count < 80; y++)
+                    for (int x = 0; x < World.W && placedList.Count < 80; x++)
+                    {
+                        int id = World.Idx(x, y); var tt = (Tile)wd.tiles[id];
+                        if ((tt != Tile.Lamp && tt != Tile.Vent) || wd.explored[id] == 0) continue;
+                        if (x == bx - 2 && y == by - 2) continue;   // 비콘 곁에 처음부터 있는 기본 램프 한 칸만 제외 (플레이어가 기지 주변에 둔 것은 보인다)
+                        placedList.Add(new Vector3(x, y, tt == Tile.Vent ? 1 : 0));
+                    }
+            }
+            while (dotPlaced.Count < placedList.Count) dotPlaced.Add(UiKit.Img(miniRt, null, Color.white, false, "placed"));
+            float pd = Mathf.Max(2f, cell * 1.6f);
+            for (int i = 0; i < dotPlaced.Count; i++)
+            {
+                bool on = i < placedList.Count; dotPlaced[i].gameObject.SetActive(on); if (!on) continue;
+                var pv = placedList[i];
+                UiKit.Place(dotPlaced[i].rectTransform, 0, 0, 0.5f, 0.5f, off + (pv.x + 0.5f) * cell, off + (World.H - (pv.y + 0.5f)) * cell, pd, pd);
+                dotPlaced[i].color = pv.z > 0.5f ? new Color32(127, 227, 255, 255) : new Color32(255, 244, 190, 255);   // 램프는 상자 점(금색)과 구분되게 옅은 따뜻한 흰색, 크기도 더 작다
             }
         }
     }

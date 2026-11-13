@@ -99,7 +99,7 @@ namespace Abyss
         public static readonly string[] ItemIcon = { "scrap", "brass", "crystal", "pearl", "gel", "lamp", "vent", "potion" };
         public static readonly Color32[] ItemColor = Cols("#e0904a", "#f2c14e", "#4ff0e0", "#f4f0ff", "#d98cff", "#ffd86b", "#7fe3ff", "#4fc3f7");
         public static readonly string[] TrackLabel = { "곡괭이", "작살", "랜턴", "산소통", "추진 핀", "방호복", "비콘 확장" };
-        public static readonly string[] TrackIcon = { "pick", "harpoon", "lamp", "tank", "fins", "armor", "beacon" };
+        public static readonly string[] TrackIcon = { "pick", "harpoon", "lantern", "tank", "fins", "armor", "beacon" };   // 랜턴(시야 강화)은 손에 드는 랜턴, 램프(소모품)는 설치형 전구라서 아이콘을 다르게 쓴다
 
         static Cost[] C(params object[] kv)
         {

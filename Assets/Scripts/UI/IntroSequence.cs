@@ -178,6 +178,7 @@ namespace Abyss
             float impact = 0;
             for (int i = 0; i < HitT.Length; i++) if (t >= HitT[i]) impact += HitW[i] * Mathf.Exp(-(t - HitT[i]) * 4.5f);
 
+            impact *= GameSettings.FxScale;   // '화면 효과 줄이기': 카메라 펀치·흔들림을 약하게
             // ---- 배경 밝기 ----
             float bgLv = Pw(t, new[] { 0f, 3f, 5.4f, 8f, 16f, 24f, 26f }, new[] { 0f, 0.55f, 0.6f, 0.12f, 0.3f, 0.6f, 0.35f });
             bg.color = Color.Lerp(new Color(0, 0, 0.01f), new Color(0.02f, 0.09f, 0.16f), bgLv);
@@ -231,7 +232,8 @@ namespace Abyss
             float eyeOpen = Smooth((t - 8.5f) / 1.8f) * (1f - Smooth((t - 13.6f) / 0.7f));
             float eyeA = Smooth((t - 8.4f) / 0.6f) * (1f - Smooth((t - 14f) / 0.8f));
             float E = H * 0.62f, efy = 0.66f;
-            Put(eyeGlow, 0.5f, efy, E * 2.4f, E * 2.4f * Mathf.Max(0.15f, eyeOpen)); eyeGlow.color = new Color(1f, 0.15f, 0.1f, 0.5f * eyeA * (0.7f + 0.3f * Mathf.Sin(t * 3f)));
+            // 붉은 광채는 눈 주변에만 은은하게 (화면 전체가 붉게 물들지 않도록 크기와 세기를 작게)
+            Put(eyeGlow, 0.5f, efy, E * 1.35f, E * 1.35f * Mathf.Max(0.15f, eyeOpen)); eyeGlow.color = new Color(1f, 0.15f, 0.1f, 0.22f * eyeA * (0.75f + 0.25f * Mathf.Sin(t * 3f)));
             Put(eyeBody, 0.5f, efy, E, E * Mathf.Max(0.02f, eyeOpen)); eyeBody.color = new Color(1, 1, 1, eyeA);
             Put(eyeIris, 0.5f, efy, E * 0.42f, E * 0.42f * Mathf.Max(0.02f, eyeOpen), Mathf.Sin(t * 0.9f) * E * 0.03f, -E * 0.13f * eyeOpen);
             eyeIris.color = new Color(1, 1, 1, eyeA);
@@ -284,9 +286,10 @@ namespace Abyss
             // ---- 섬광: 붕괴는 붉게, 타이틀은 하얗게 ----
             float fk;
             if (t >= TitleT) { fk = Mathf.Clamp01(1f - (t - TitleT) / 0.6f); flash.color = new Color(1, 1, 1, 0.95f * fk * fk); }
-            else if (t >= 5.5f && t < 6.2f) { fk = 1f - (t - 5.5f) / 0.7f; flash.color = new Color(1f, 0.15f, 0.1f, 0.5f * fk); }
+            else if (t >= 5.5f && t < 5.9f) { fk = 1f - (t - 5.5f) / 0.4f; flash.color = new Color(1f, 0.2f, 0.15f, 0.22f * fk); }   // 붕괴 순간의 붉은 섬광은 짧고 약하게
             else flash.color = new Color(1, 1, 1, 0);
 
+            if (GameSettings.ReduceFx) { var fcc = flash.color; fcc.a *= GameSettings.FxScale; flash.color = fcc; }   // 번쩍임도 약하게
             // ---- 레터박스 ----
             float barH = H * 0.09f * Smooth(t / 1.0f) * (1f - Smooth((t - (TitleT + 1.8f)) / 1.0f));
             UiKit.Place(barT, 0.5f, 1f, 0.5f, 1f, 0, 0, W + 4, barH); UiKit.Place(barB, 0.5f, 0f, 0.5f, 0f, 0, 0, W + 4, barH);

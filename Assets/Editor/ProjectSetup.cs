@@ -13,7 +13,7 @@ namespace Abyss.EditorTools
         [MenuItem("Abyss/Setup Project")]
         public static void Run()
         {
-            PlayerSettings.productName = "Abyss Keeper";
+            BuildTools.EnsureBranding();   // 제품명·회사명·아이콘은 BuildTools 한 곳에서만 정한다 (예전 이름 'Abyss Keeper'로 되돌리지 않는다)
             // 가로 화면 전용 (좌/우 가로만 허용)
             PlayerSettings.defaultInterfaceOrientation = UIOrientation.AutoRotation;
             PlayerSettings.allowedAutorotateToPortrait = false;

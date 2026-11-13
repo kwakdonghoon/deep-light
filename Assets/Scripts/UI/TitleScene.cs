@@ -78,7 +78,7 @@ namespace Abyss
         }
 
         // 작은 물고기 (오른쪽을 본다)
-        static Sprite MakeFish()
+        internal static Sprite MakeFish()
         {
             var pal = new Dictionary<char, Color32> { { 'x', new Color32(127, 211, 245, 255) }, { 'X', new Color32(79, 150, 200, 255) }, { 'e', new Color32(10, 22, 38, 255) } };
             return PixelArt.FromRows(new[] { "...xxx..X", ".xxxxxxXX", "xxxxexxXX", ".xxxxxxXX", "...xxx..X" }, pal).ToSprite();

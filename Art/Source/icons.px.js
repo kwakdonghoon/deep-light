@@ -56,6 +56,22 @@ sprite("lamp", { mx: true, outline: "k" }, `
   ....bbb
   .....bb`)
 
+// lantern (the Light upgrade): a hand lantern with a carrying handle, metal cage and a glowing flame inside.
+// Unlike the lamp above (a placeable bulb), this one reads as something you carry.
+sprite("lantern", { mx: true, outline: "k" }, `
+  .....bb
+  ....b..
+  ....b..
+  .BBBBBB
+  .ByYyyy
+  .ByyyWW
+  .ByyWWW
+  .ByyyWW
+  .ByYyyy
+  .BBBBBB
+  ..bbbbb
+  ...bBBB`)
+
 sprite("vent", { outline: "k" }, `
   ...cc.....c...
   ...cC....cC...

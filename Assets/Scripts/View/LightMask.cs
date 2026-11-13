@@ -76,7 +76,7 @@ namespace Abyss
         static float Ambient(Sim sim)
         {
             float d = Mathf.Sqrt((sim.P.x - World.BX) * (sim.P.x - World.BX) + (sim.P.y - World.BY) * (sim.P.y - World.BY)) / World.TS;
-            return Mathf.Lerp(AmbientNear, AmbientFar, Mathf.Clamp01(d / AmbientFullDist));
+            return Mathf.Lerp(AmbientNear, AmbientFar, Mathf.Clamp01(d / AmbientFullDist)) * GameSettings.DarkScale;   // 밝기 설정이 높을수록 어둠이 옅어진다
         }
 
         /// <param name="camX">카메라 왼쪽 위 월드 px(정수)</param>

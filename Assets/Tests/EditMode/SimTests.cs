@@ -404,10 +404,12 @@ namespace Abyss.Tests
             Run(s, 125f, default(SimInput), 0.1f);                                  // 시작 비트로부터 약 141초
             Assert.AreEqual(0, lines.Count, "150초 전에는 힌트가 없다");
             Run(s, 30f, default(SimInput), 0.1f);
-            Assert.AreEqual(1, lines.Count, "150초 넘게 진척이 없으면 힌트 한 번");
+            // 150초 넘게 진척이 없으면 힌트 한 번 + (목표 위치를 알 수 있으면) 바로 뒤 줄로 방향 안내 한 번
+            Assert.AreEqual(2, lines.Count, "힌트 한 줄과 방향 안내 한 줄");
             StringAssert.Contains("주황 점", lines[0]);
+            StringAssert.StartsWith("아라: 지금은", lines[1]);
             Run(s, 400f, default(SimInput), 0.1f);
-            Assert.AreEqual(1, lines.Count, "같은 목표에는 힌트를 반복하지 않는다");
+            Assert.AreEqual(2, lines.Count, "같은 목표에는 힌트를 반복하지 않는다");
         }
 
         [Test]
@@ -867,6 +869,22 @@ namespace Abyss.Tests
             Assert.AreEqual(Data.ItemName.Length, System.Enum.GetValues(typeof(Item)).Length); Assert.AreEqual(Data.ItemName.Length, Data.ItemIcon.Length);
             Assert.AreEqual(Data.Up.Length, System.Enum.GetValues(typeof(Track)).Length, "Track 과 Up 표의 개수가 같아야 한다");
             Assert.AreEqual(Data.Up.Length, Data.TrackLabel.Length); Assert.AreEqual(Data.Up.Length, Data.TrackIcon.Length);
+        }
+
+        [Test]
+        public void GoalTarget_GuidesEarlyGoalsAndDirectionLineFitsTheToast()
+        {
+            var s = new Sim(2024) { started = true }; s.Populate();
+            float gx, gy;
+            Assert.IsTrue(s.GoalTarget(out gx, out gy), "첫 목표(고철)는 남은 비콘 곁 광맥을 가리킨다");
+            var line = s.DirectionLine(gx, gy);
+            StringAssert.StartsWith("아라:", line); Assert.LessOrEqual(line.Length, 52, "토스트 폭: " + line);
+            // 플레이어를 목표 오른쪽 아래로 옮기면 목표는 '왼쪽 위쪽'에 있다
+            s.P.x = gx + 100; s.P.y = gy + 100;
+            StringAssert.Contains("왼쪽 위쪽", s.DirectionLine(gx, gy));
+            // 후반 목표(심연의 눈)는 길잡이를 쓰지 않는다
+            s.goalMask = (1 << 13) - 1;
+            Assert.IsFalse(s.GoalTarget(out gx, out gy), "후반은 직접 찾게 한다");
         }
     }
 }

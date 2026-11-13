@@ -80,7 +80,7 @@ namespace Abyss
             if (saveT <= 0) { saveT = 10f; SaveNow(); }
         }
 
-        void SaveNow() { if (!NoSave && Sim != null && Sim.started) SaveSystem.Save(Sim); }
+        void SaveNow() { if (!NoSave && Sim != null && Sim.started) { SaveSystem.Save(Sim); if (Hud != null) Hud.NotifySaved(); } }
 
         void OnApplicationPause(bool paused) { if (paused) { SaveNow(); if (Hud != null) Hud.OpenMenu(); } }   // 앱 전환: 저장하고 일시정지 메뉴
         void OnApplicationQuit() { SaveNow(); }
