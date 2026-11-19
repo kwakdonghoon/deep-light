@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>딥 라이트 패치노트 v0.1.0</title>
+<style>
+  :root { --bg:#0b1a24; --card:#12293a; --text:#dbe9f1; --muted:#8fa9b8; --accent:#4fd1c5; --add:#4fd1c5; --imp:#f6c453; --fix:#f08a6c; }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#eef4f7; --card:#ffffff; --text:#14303f; --muted:#5b7585; --accent:#0f8f86; --add:#0f8f86; --imp:#a86f00; --fix:#b8452a; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:"Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif; line-height:1.65; }
+  main { max-width:720px; margin:0 auto; padding:32px 16px 48px; }
+  header { margin-bottom:24px; }
+  h1 { margin:0; font-size:1.8rem; }
+  .sub { color:var(--muted); margin-top:4px; }
+  section { background:var(--card); border-radius:12px; padding:18px 20px; margin-bottom:16px; border-left:4px solid var(--accent); }
+  section.add { border-color:var(--add); }
+  section.imp { border-color:var(--imp); }
+  section.fix { border-color:var(--fix); }
+  h2 { margin:0 0 8px; font-size:1.1rem; }
+  ul { margin:0; padding-left:1.2em; }
+  li { margin:3px 0; }
+  .note { color:var(--muted); font-size:.92rem; }
+  footer { color:var(--muted); font-size:.85rem; text-align:center; margin-top:24px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>딥 라이트 패치노트</h1>
+    <div class="sub">v0.1.0 · EKGAMES</div>
+  </header>
+
+  <section class="add">
+    <h2>추가</h2>
+    <ul>
+      <li>인트로 영상(약 27초), 전체 화면 타이틀</li>
+      <li>미션 안내: 아라가 방향을 말해 주고, 월드에서 반짝이고, 미니맵에 점이 뜹니다</li>
+      <li>비콘 방향 화살표, 설치한 램프·환기구가 미니맵에 표시됩니다</li>
+      <li>산소 부족 경보음, 배경음악</li>
+      <li>발 거품, 물고기떼, 다양한 생물</li>
+      <li>PC 키보드 단축키와 게임패드 지원</li>
+      <li>콘솔 패드 모양 조작 스틱</li>
+      <li>창을 벗어나면 자동 일시정지</li>
+    </ul>
+  </section>
+
+  <section class="imp">
+    <h2>개선</h2>
+    <ul>
+      <li>제작창을 카드형으로 정리했고, 두 번 누르면 제작됩니다</li>
+      <li>메뉴에 음량 켜기/끄기, 밝기, 화면 효과 줄이기를 넣었습니다</li>
+      <li>저장 표시와 색맹용 <b>!</b> 표시를 넣었습니다</li>
+      <li>랜턴과 램프 아이콘을 구분했습니다</li>
+      <li>회사명 EKGAMES와 앱 아이콘을 적용했습니다</li>
+    </ul>
+  </section>
+
+  <section class="fix">
+    <h2>수정</h2>
+    <ul>
+      <li>시작할 때 붉은 화면이 보이던 문제</li>
+      <li>타이틀 직전에 게임 화면이 비치던 문제</li>
+      <li>제작창이 안 열리던 문제</li>
+      <li>조작 패드가 잘려 보이던 문제</li>
+      <li>인트로가 멈추던 문제</li>
+      <li>키를 뗀 뒤 잠수부가 미끄러지던 문제</li>
+      <li>물고기가 거꾸로 헤엄치던 문제</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>참고</h2>
+    <ul class="note">
+      <li>저장 위치가 바뀌어서 인트로가 다시 나옵니다.</li>
+      <li>게임패드로 메뉴를 고르는 기능과 Android 실기기 확인은 아직 없습니다.</li>
+    </ul>
+  </section>
+
+  <footer>© EKGAMES</footer>
+</main>
+</body>
+</html>
